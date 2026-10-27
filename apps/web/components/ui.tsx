@@ -163,6 +163,20 @@ export function RedemptionStatusBadge({ status }: { status: string }) {
   );
 }
 
+const docTones: Record<string, Tone> = {
+  DRAFT: 'neutral',
+  ISSUED: 'navy',
+  PAID: 'ok',
+  OVERDUE: 'bad',
+  VOID: 'neutral',
+};
+export function DocumentStatusBadge({ status }: { status: string }) {
+  const { t } = useI18n();
+  return (
+    <Badge tone={docTones[status] ?? 'neutral'}>{t(`docstatus.${status}` as MessageKey)}</Badge>
+  );
+}
+
 export function Field({
   label,
   hint,

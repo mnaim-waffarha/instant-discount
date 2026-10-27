@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { CountersService } from '../src/counters/counters.service';
 import { LifecycleService } from '../src/discounts/lifecycle.service';
 import { JobsService } from '../src/jobs/jobs.service';
+import { SettlementService } from '../src/settlement/settlement.service';
 import { DEMO, createDemoCampaign } from '../scripts/demo-data';
 import {
   eventually,
@@ -27,7 +28,13 @@ beforeAll(async () => {
   const base = await startApp();
   h = { ...base, net: undefined as never };
   counters = h.app.get(CountersService);
-  jobs = new JobsService(h.prisma, h.redis, h.app.get(LifecycleService), counters);
+  jobs = new JobsService(
+    h.prisma,
+    h.redis,
+    h.app.get(LifecycleService),
+    counters,
+    h.app.get(SettlementService),
+  );
 });
 
 afterAll(async () => {

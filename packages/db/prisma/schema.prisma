@@ -309,8 +309,11 @@ model RedemptionEvent {
   amountMinor        BigInt?
   payload            Json?
   createdAt          DateTime            @default(now())
+  // Set once the settlement ledger has processed this event.
+  ledgerProcessedAt  DateTime?
 
   @@index([redemptionId])
+  @@index([ledgerProcessedAt, type])
 }
 
 // Every inquiry, including "no discount", for analytics and support. Partition monthly in production.
@@ -335,11 +338,64 @@ model InquiryLog {
   @@index([campaignId, createdAt])
 }
 
+enum DocumentType {
+  // A funder (e.g. a bank) owes Waffarha its share (WAFFARHA_COLLECTS campaigns). VAT applies.
+  INVOICE
+  // Waffarha owes the merchant the funders' shares (WAFFARHA_COLLECTS campaigns).
+  PAYOUT_STATEMENT
+  // DIRECT campaigns: who owes whom, settled outside Waffarha.
+  STATEMENT
+}
+
+enum DocumentLineKind {
+  // The document's partner funded this much discount (it owes it).
+  FUNDED_SHARE
+  // A funder owes the document's partner (the merchant) this much.
+  OWED_BY_FUNDER
+  // The merchant's own contribution; informational, not payable.
+  OWN_CONTRIBUTION
+}
+
+// One partner's share of one redemption event: +share on confirmation, -share on a
+// refund or a cancel after confirmation. Derived from RedemptionEvent; idempotent per event.
+model SettlementEntry {
+  id                 String         @id @default(uuid())
+  redemptionEventId  String
+  redemptionId       String
+  campaignId         String
+  settlementMode     SettlementMode
+  // The funder whose share this is.
+  partnerId          String
+  partnerType        PartnerType
+  // The merchant partner whose terminal took the payment.
+  merchantPartnerId  String
+  country            Country
+  currency           Currency
+  // Signed, minor units.
+  amountMinor        BigInt
+  // +1 for a confirmation, -1 for a full reversal, 0 for a partial refund (count unchanged).
+  countDelta         Int
+  eventAt            DateTime
+  // Document of the funder side (INVOICE, or STATEMENT in DIRECT mode).
+  funderDocumentId   String?
+  // Document of the merchant side (PAYOUT_STATEMENT, or STATEMENT in DIRECT mode).
+  merchantDocumentId String?
+  createdAt          DateTime       @default(now())
+
+  @@unique([redemptionEventId, partnerId])
+  @@index([country, eventAt])
+  @@index([partnerId, eventAt])
+  @@index([merchantPartnerId, eventAt])
+}
+
 model Invoice {
   id            String        @id @default(uuid())
-  number        String        @unique
+  type          DocumentType
+  // Assigned when issued: INV-EG-2026-000001, PAY-…, STM-…
+  number        String?       @unique
   partnerId     String
   partner       Partner       @relation(fields: [partnerId], references: [id])
+  country       Country
   currency      Currency
   periodStart   DateTime
   periodEnd     DateTime
@@ -351,22 +407,52 @@ model Invoice {
   issuedAt      DateTime?
   dueAt         DateTime?
   paidAt        DateTime?
+  paymentRef    String?
+  voidReason    String?
   createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   lines InvoiceLine[]
 
-  @@unique([partnerId, currency, periodStart])
+  @@index([partnerId, periodStart])
+  @@index([status])
 }
 
 model InvoiceLine {
-  id                    String  @id @default(uuid())
+  id                    String           @id @default(uuid())
   invoiceId             String
-  invoice               Invoice @relation(fields: [invoiceId], references: [id])
+  invoice               Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  kind                  DocumentLineKind
   campaignId            String
+  campaignName          String
+  // For OWED_BY_FUNDER lines: the funder. For FUNDED_SHARE lines: the merchant paid.
+  counterpartyPartnerId String?
+  counterpartyName      String?
   redemptionCount       Int
-  grossDiscountMinor    BigInt
-  refundedDiscountMinor BigInt
-  partnerShareMinor     BigInt
+  grossMinor            BigInt
+  reversedMinor         BigInt
+  netMinor              BigInt
+}
+
+// Gap-free document numbers per prefix, country and year.
+model DocumentSequence {
+  prefix  String
+  country Country
+  year    Int
+  value   Int     @default(0)
+
+  @@id([prefix, country, year])
+}
+
+// VAT applied to INVOICE documents, per country. The latest rate valid at the period end applies.
+model TaxRate {
+  id        String   @id @default(uuid())
+  country   Country
+  rateBps   Int
+  validFrom DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([country, validFrom])
 }
 
 model User {

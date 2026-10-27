@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Interval } from '@nestjs/schedule';
+import { Cron, Interval } from '@nestjs/schedule';
+import { COUNTRY_DEFAULTS, previousPeriod } from '@instant-discount/shared';
 import { CAMPAIGNS_CHANGED_CHANNEL } from '../campaigns/campaign-cache.service';
 import { CountersService, USAGE_STATUSES } from '../counters/counters.service';
 import { LifecycleService } from '../discounts/lifecycle.service';
 import { PrismaService } from '../infra/prisma.service';
 import { RedisService } from '../infra/redis.service';
+import { SettlementService } from '../settlement/settlement.service';
 
 const EXPIRY_BATCH = 200;
 const EXPIRY_RUN_BUDGET_MS = 30_000;
@@ -19,6 +21,7 @@ export class JobsService {
     private readonly redis: RedisService,
     private readonly lifecycle: LifecycleService,
     private readonly counters: CountersService,
+    private readonly settlement: SettlementService,
   ) {}
 
   /** Releases reservations the acquirer never confirmed (e.g. it timed out and charged full price). */
@@ -102,5 +105,41 @@ export class JobsService {
         return drift;
       })) ?? []
     );
+  }
+
+  /** Keeps the settlement ledger close to real time for dashboards and the portal. */
+  @Interval(600_000)
+  async buildLedger(): Promise<number> {
+    return (
+      (await this.redis.withLock('job:ledger', 600_000, () => this.settlement.buildLedger())) ?? 0
+    );
+  }
+
+  /** Drafts last month's documents early on the 1st, in each country's own timezone. */
+  @Cron('0 30 2 1 * *', { timeZone: COUNTRY_DEFAULTS.EG.timezone })
+  generateEgypt() {
+    return this.generateFor('EG');
+  }
+
+  @Cron('0 30 2 1 * *', { timeZone: COUNTRY_DEFAULTS.SA.timezone })
+  generateSaudi() {
+    return this.generateFor('SA');
+  }
+
+  @Cron('0 0 6 * * *')
+  async markOverdue(): Promise<number> {
+    return (
+      (await this.redis.withLock('job:overdue', 60_000, () => this.settlement.markOverdue())) ?? 0
+    );
+  }
+
+  private async generateFor(country: 'EG' | 'SA') {
+    const period = previousPeriod(new Date(), COUNTRY_DEFAULTS[country].timezone);
+    try {
+      const result = await this.settlement.generate(country, period);
+      this.logger.log(`Settlement drafts for ${country} ${period}: ${result.created}`);
+    } catch (err) {
+      this.logger.error(`Settlement run for ${country} ${period} failed: ${String(err)}`);
+    }
   }
 }

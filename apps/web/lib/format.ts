@@ -106,3 +106,16 @@ function tzOffsetMs(instant: Date, timeZone: string): number {
   );
   return wall - Math.floor(instant.getTime() / 1000) * 1000;
 }
+
+export function formatMonth(
+  value: string | Date | null | undefined,
+  locale: Locale,
+  timeZone?: string,
+): string {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone,
+  }).format(new Date(value));
+}

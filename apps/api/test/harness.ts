@@ -35,7 +35,7 @@ export async function startApp(): Promise<Omit<Harness, 'net'>> {
 /** Empties Postgres and Redis and recreates the demo network. */
 export async function resetData(h: Omit<Harness, 'net'>): Promise<DemoNetwork> {
   const tables = await h.prisma.$queryRaw<Array<{ tablename: string }>>`
-    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
+    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN ('_prisma_migrations', 'TaxRate')`;
   await h.prisma.$executeRawUnsafe(
     `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(', ')} CASCADE`,
   );

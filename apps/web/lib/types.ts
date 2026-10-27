@@ -235,3 +235,39 @@ export interface InquirySummary {
   reasons: Array<{ reason: string | null; count: number }>;
   latencyMs: { p50: number | null; p95: number | null; p99: number | null };
 }
+
+export type DocumentType = 'INVOICE' | 'PAYOUT_STATEMENT' | 'STATEMENT';
+export type DocumentStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'OVERDUE' | 'VOID';
+
+export interface SettlementDocument {
+  id: string;
+  type: DocumentType;
+  number: string | null;
+  partnerId: string;
+  country: Country;
+  currency: 'EGP' | 'SAR';
+  periodStart: string;
+  periodEnd: string;
+  subtotalMinor: number;
+  vatBps: number;
+  vatMinor: number;
+  totalMinor: number;
+  status: DocumentStatus;
+  issuedAt: string | null;
+  dueAt: string | null;
+  paidAt: string | null;
+  paymentRef: string | null;
+  voidReason: string | null;
+  partner?: Pick<Partner, 'id' | 'name' | 'type'> & Partial<Partner>;
+  lines?: Array<{
+    id: string;
+    kind: 'FUNDED_SHARE' | 'OWED_BY_FUNDER' | 'OWN_CONTRIBUTION';
+    campaignId: string;
+    campaignName: string;
+    counterpartyName: string | null;
+    redemptionCount: number;
+    grossMinor: number;
+    reversedMinor: number;
+    netMinor: number;
+  }>;
+}

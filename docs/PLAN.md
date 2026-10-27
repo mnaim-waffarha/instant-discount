@@ -157,6 +157,10 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 
 - **Phase 0 — done.** Monorepo, docker-compose, Prisma schema + `init` migration, seed script, CI
   (build, typecheck, unit + integration tests against Postgres/Redis service containers).
+- **Phase 3 — done.** Settlement ledger (exact per-funder shares, refunds reversed in the period
+  they happen), monthly drafts per country, INVOICE / PAYOUT_STATEMENT / STATEMENT documents with
+  gap-free numbers, VAT table, PDF (EN + Arabic names) and CSV, email on issue, paid/void/overdue;
+  partner portal (campaigns, live share, payments, documents).
 - **Phase 2 — done.** Admin API (Google SSO, magic links, RBAC, maker-checker campaigns with
   versioned change requests, simulator, stats, explorer, audit) and the bilingual web app.
 - **Phase 1 — done.** Rules engine; acquirer API (`docs/api/acquirer-v1.yaml`) with HMAC auth,
@@ -272,6 +276,10 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 - When a campaign's remaining total budget or a card's remaining amount is smaller than the
   discount, the campaign is skipped (no partial discount) and the next campaign is tried.
 - If Redis loses a campaign's counters, they are rebuilt from Postgres on the next inquiry.
+- Settlement: a refund or cancellation after a document was issued is not lost; it lands in the
+  next run as a credit (a negative line). Voiding a document releases its entries for the next run.
+  Drafting invoices fails if no VAT rate is configured for the country (never a silent 0%).
+- Portal figures are live estimates (net of refunds); issued documents are the official amounts.
 
 ## Defaults assumed — to confirm with acquirer/finance during build
 

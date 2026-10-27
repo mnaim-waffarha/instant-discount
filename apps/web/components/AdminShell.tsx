@@ -25,6 +25,11 @@ const NAV: Array<{ group: MessageKey; items: NavItem[] }> = [
       { href: '/admin/approvals', label: 'nav.approvals' },
       { href: '/admin/simulator', label: 'nav.simulator' },
       { href: '/admin/transactions', label: 'nav.transactions' },
+      {
+        href: '/admin/settlements',
+        label: 'nav.settlements',
+        roles: ['ADMIN', 'FINANCE', 'APPROVER', 'VIEWER'],
+      },
     ],
   },
   {

@@ -113,7 +113,96 @@ let campaignUrl;
   await context.close();
 }
 
-// 5. Partner users are kept out of admin.
+// 5. A real signed payment as the acquirer, then finance settles the month.
+{
+  const { createHash, createHmac } = await import('node:crypto');
+  const API = process.env.API_URL ?? 'http://localhost:3000';
+  const post = async (path, body, idem) => {
+    const raw = JSON.stringify(body);
+    const ts = String(Math.floor(Date.now() / 1000));
+    const sig = createHmac('sha256', 'demo-secret-change-me')
+      .update(`${ts}\nPOST\n${path}\n${createHash('sha256').update(raw).digest('hex')}`)
+      .digest('hex');
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Api-Key': 'acq_demo',
+      'X-Timestamp': ts,
+      'X-Signature': sig,
+    };
+    if (idem) headers['Idempotency-Key'] = idem;
+    return (await fetch(API + path, { method: 'POST', headers, body: raw })).json();
+  };
+  const ref = `e2e-${Date.now()}`;
+  const inq = await post(
+    '/v1/discounts/inquire',
+    {
+      terminal_id: 'TID0001',
+      bin: '412345',
+      card_token: `tok_${ref}`,
+      scheme: 'VISA',
+      amount: 50000,
+      currency: 'EGP',
+      acquirer_txn_ref: ref,
+    },
+    ref,
+  );
+  check(inq.eligible === true, 'acquirer payment got a discount');
+  const conf = await post(`/v1/discounts/${inq.redemption_id}/confirm`, {
+    charged_amount: inq.final_amount,
+  });
+  check(conf.status === 'CONFIRMED', 'acquirer confirmed the payment');
+
+  const { context, page } = await signIn('finance@waffarha.com');
+  await page.goto(`${BASE}/admin/settlements`);
+  const month = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Africa/Cairo',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date());
+  await page.locator('input[type="month"]').fill(month);
+  await page.getByRole('button', { name: 'Build drafts for this month' }).click();
+  await page.getByText(/draft documents created/).waitFor();
+  await page.waitForLoadState('networkidle');
+  await page.screenshot({ path: `${OUT}/08-settlements-en.png`, fullPage: true });
+  // Open the bank's invoice and issue it.
+  await page
+    .getByRole('row')
+    .filter({ hasText: 'Invoice' })
+    .filter({ hasText: 'Draft' })
+    .first()
+    .click();
+  await page.waitForURL(/\/admin\/settlements\//);
+  await page.getByRole('button', { name: 'Issue' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Issue' }).click();
+  await page
+    .getByText(/INV-EG-/)
+    .first()
+    .waitFor();
+  check(true, 'finance issued the invoice with a number');
+  await page.screenshot({ path: `${OUT}/09-invoice-en.png`, fullPage: true });
+  await context.close();
+}
+
+// 6. The bank sees its campaigns, share and the issued invoice in the portal (Arabic).
+{
+  const { context, page } = await signIn('ops@demobank.example');
+  await page.getByText('Your campaigns').waitFor();
+  await page.waitForLoadState('networkidle');
+  await page.screenshot({ path: `${OUT}/10-portal-en.png`, fullPage: true });
+  await page.getByRole('link', { name: 'Invoices & statements' }).click();
+  await page
+    .getByText(/INV-EG-/)
+    .first()
+    .waitFor();
+  check(true, 'bank sees the issued invoice in the portal');
+  await page.getByRole('button', { name: 'العربية' }).click();
+  await page.waitForLoadState('networkidle');
+  await page.screenshot({ path: `${OUT}/11-portal-documents-ar.png`, fullPage: true });
+  await page.getByRole('button', { name: 'English' }).click();
+  await context.close();
+}
+
+// 7. Partner users are kept out of admin.
 {
   const context = await browser.newContext();
   const page = await context.newPage();
