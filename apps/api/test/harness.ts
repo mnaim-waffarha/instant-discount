@@ -88,3 +88,22 @@ export function inquire(
     idempotencyKey: key ?? `idem-${body.acquirer_txn_ref}`,
   });
 }
+
+/** A supertest agent signed in as `email` (via dev-login), keeping the session cookie. */
+export async function loginAs(app: INestApplication, email: string) {
+  const agent = request.agent(app.getHttpServer());
+  const res = await agent.post('/admin/v1/auth/dev-login').send({ email });
+  if (res.status !== 200)
+    throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
+  return agent;
+}
+
+/** Waits until `fn` returns true (used for pub/sub-driven cache reloads). */
+export async function eventually(fn: () => Promise<boolean>, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await fn()) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('condition not met in time');
+}

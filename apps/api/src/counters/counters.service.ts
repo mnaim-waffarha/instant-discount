@@ -189,6 +189,13 @@ export class CountersService {
     return { initialized: init === 1, spent: Number(spent ?? 0), count: Number(count ?? 0), cards };
   }
 
+  /** Discount reserved and redemptions counted in one day bucket. */
+  async dayUsage(campaignId: string, day: string): Promise<{ spent: number; count: number }> {
+    const k = campaignKeys(campaignId);
+    const [spent, count] = await this.redis.client.mget(k.daySpent(day), k.dayCount(day));
+    return { spent: Number(spent ?? 0), count: Number(count ?? 0) };
+  }
+
   private async scanKeys(pattern: string): Promise<string[]> {
     const keys: string[] = [];
     let cursor = '0';

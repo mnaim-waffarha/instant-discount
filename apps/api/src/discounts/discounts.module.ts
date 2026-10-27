@@ -21,6 +21,6 @@ import { LifecycleService } from './lifecycle.service';
     InquiryService,
     LifecycleService,
   ],
-  exports: [CountersService, LifecycleService],
+  exports: [CountersService, LifecycleService, CampaignCache],
 })
 export class DiscountsModule {}

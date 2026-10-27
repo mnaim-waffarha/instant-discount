@@ -80,6 +80,13 @@ enum InvoiceStatus {
   VOID
 }
 
+enum SettlementMode {
+  // Waffarha invoices external funders and pays the merchant their shares.
+  WAFFARHA_COLLECTS
+  // Funders settle with the merchant directly; the system issues statements only.
+  DIRECT
+}
+
 enum UserRole {
   ADMIN
   CAMPAIGN_MANAGER
@@ -201,11 +208,22 @@ model Campaign {
   perCardMaxAmountMinor BigInt?
   perCardPeriod         LimitPeriod?
 
-  createdById  String?
-  approvedById String?
-  approvedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  settlementMode SettlementMode @default(WAFFARHA_COLLECTS)
+
+  createdById     String?
+  updatedById     String?
+  submittedById   String?
+  submittedAt     DateTime?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  pausedAt        DateTime?
+  // Proposed edits to a campaign that is already approved; applied on approval.
+  pendingChanges  Json?
+  pendingById     String?
+  pendingAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   fundings    CampaignFunding[]
   versions    CampaignVersion[]
@@ -352,16 +370,46 @@ model InvoiceLine {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  role         UserRole
+  id          String    @id @default(uuid())
+  email       String    @unique
+  name        String
+  role        UserRole
+  // Staff sign in with Google; set on first login.
+  googleSub   String?   @unique
   // Set only for PARTNER_USER — scopes the partner portal.
-  partnerId    String?
-  partner      Partner? @relation(fields: [partnerId], references: [id])
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  partnerId   String?
+  partner     Partner?  @relation(fields: [partnerId], references: [id])
+  locale      String    @default("en")
+  active      Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  sessions Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  // SHA-256 of the cookie token; the token itself is never stored.
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model MagicLinkToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
 }
 
 model AuditLog {

@@ -4,3 +4,5 @@ process.env.REDIS_URL ??= 'redis://localhost:6379/1';
 process.env.CARD_TOKEN_PEPPER ??= 'test-pepper-123';
 process.env.SECRETS_ENCRYPTION_KEY ??= Buffer.alloc(32, 1).toString('base64');
 process.env.CAMPAIGN_CACHE_REFRESH_MS ??= '600000';
+process.env.DEV_LOGIN ??= 'true';
+process.env.GOOGLE_HOSTED_DOMAIN ??= 'waffarha.com';
