@@ -3,7 +3,15 @@ import { CountersService } from '../src/counters/counters.service';
 import { LifecycleService } from '../src/discounts/lifecycle.service';
 import { JobsService } from '../src/jobs/jobs.service';
 import { DEMO, createDemoCampaign } from '../scripts/demo-data';
-import { inquire, inquiryBody, resetData, signedPost, startApp, type Harness } from './harness';
+import {
+  eventually,
+  inquire,
+  inquiryBody,
+  resetData,
+  signedPost,
+  startApp,
+  type Harness,
+} from './harness';
 
 let h: Harness;
 let counters: CountersService;
@@ -132,8 +140,12 @@ describe('inquire', () => {
     await campaign();
     expect((await inquire(h.app, { terminal_id: 'NOPE' })).body.reason).toBe('UNKNOWN_TERMINAL');
     expect((await inquire(h.app, { bin: '555555' })).body.reason).toBe('NO_ELIGIBLE_CAMPAIGN');
-    const log = await h.prisma.inquiryLog.findFirst({ where: { bin: '555555' } });
-    expect(log?.reason).toBe('NO_ELIGIBLE_CAMPAIGN');
+    // The inquiry log is written off the payment path, so it can land a moment later.
+    await eventually(
+      async () =>
+        (await h.prisma.inquiryLog.findFirst({ where: { bin: '555555' } }))?.reason ===
+        'NO_ELIGIBLE_CAMPAIGN',
+    );
   });
 
   it('falls through to the next campaign by priority when one is capped', async () => {

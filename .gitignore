@@ -5,3 +5,7 @@ coverage/
 .env
 *.log
 dump.rdb
+.next/
+next-env.d.ts.bak
+e2e-screenshots/
+*.tsbuildinfo

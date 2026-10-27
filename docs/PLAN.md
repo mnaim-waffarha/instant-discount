@@ -157,10 +157,109 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 
 - **Phase 0 — done.** Monorepo, docker-compose, Prisma schema + `init` migration, seed script, CI
   (build, typecheck, unit + integration tests against Postgres/Redis service containers).
+- **Phase 2 — done.** Admin API (Google SSO, magic links, RBAC, maker-checker campaigns with
+  versioned change requests, simulator, stats, explorer, audit) and the bilingual web app.
 - **Phase 1 — done.** Rules engine; acquirer API (`docs/api/acquirer-v1.yaml`) with HMAC auth,
   idempotency and fail-open; Redis Lua reservation; confirm/cancel/refund with event ledger;
   worker jobs (reservation expiry, campaign SCHEDULED→ACTIVE→ENDED, counter reconciliation);
   acquirer simulator and load-test scripts.
+
+### Decisions confirmed for Phases 2–4
+
+| Topic         | Decision                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| Staff login   | Google Workspace SSO, restricted to `@waffarha.com` (hosted domain check)                             |
+| Partner login | Email magic link (admin invites; one-time link, 15 min, single use)                                   |
+| Web apps      | **One** Next.js app: admin area + partner portal, routes gated by role                                |
+| Language      | English + Arabic with RTL, language toggle                                                            |
+| Invoices      | PDF + CSV, VAT per country (EG 14%, SA 15% — configurable), numbers like `INV-EG-2026-000001`         |
+| Alerts        | Email (SMTP) + Slack incoming webhook, also listed in the dashboard                                   |
+| Funding       | Configurable per campaign: any mix of bank(s), the merchant itself, and Waffarha (shares sum to 100%) |
+| Waffarha fee  | None for now                                                                                          |
+
+### Phase 2 — Admin API, auth and web app
+
+**2a. Schema additions** (`packages/db/prisma/schema.prisma`, new migration)
+
+- `Session` (hashed token, userId, expiresAt, ip, userAgent), `MagicLinkToken` (hashed, email, expiresAt, usedAt).
+- `User`: add `googleSub`, `locale`, `lastLoginAt`; `passwordHash` removed (no passwords).
+- `Campaign`: `settlementMode` (see Phase 3), `rejectionReason`, `submittedById/At`, `pausedAt`.
+- `CampaignFunding`: role enum `BANK | MERCHANT | WAFFARHA` derived from partner type (validation: merchant-funded share must point at the campaign's merchant partner).
+
+**2b. Auth module** (`apps/api/src/auth/`)
+
+- Google SSO: web app gets a Google ID token (Google Identity Services); `POST /admin/v1/auth/google` verifies it with `google-auth-library` (audience = `GOOGLE_CLIENT_ID`, `hd` = `waffarha.com`, email verified). Only users pre-registered by an admin can log in; `BOOTSTRAP_ADMIN_EMAILS` seeds the first ADMIN(s).
+- Magic link: `POST /admin/v1/auth/magic-link` (always 200, no user enumeration) → email with link; `POST /admin/v1/auth/magic-link/verify` consumes it. Only PARTNER_USER accounts.
+- Session: random 32-byte token in an httpOnly, Secure, SameSite=Lax cookie; stored hashed; 12 h sliding expiry; `POST /auth/logout`.
+- `DEV_LOGIN=true` (non-production only) enables `POST /auth/dev-login` so local dev and tests work without Google.
+- `@Roles(...)` guard + `@CurrentUser()`; partner users are automatically scoped to their `partnerId`.
+- Rate limit auth endpoints (Redis counter per IP/email).
+
+**2c. Audit log** — interceptor on all admin mutations writes `AuditLog` (actor, action, entity, before/after JSON; secrets redacted). `GET /admin/v1/audit`.
+
+**2d. Admin APIs** (`/admin/v1/*`, zod-validated, paginated, reuse `ZodPipe`, `ApiError`)
+
+- Partners, merchants, branches, terminals CRUD; `POST /terminals/import` CSV (columns: acquirer_api_key, tid, merchant, branch, mcc) with a dry-run preview and per-row errors.
+- Acquirers: create returns the HMAC secret **once** (stored with `encryptSecret`), rotate secret, toggle active, IP allowlist.
+- Users: invite staff (role) or partner user (partnerId), deactivate.
+- Campaigns: create/edit while DRAFT (validated with rules-engine `discountConfigSchema`/`targetingSchema`/`scheduleSchema` + funding sum = 10000); `submit` → PENDING_APPROVAL; `approve` (APPROVER/ADMIN, **must differ from creator**) → SCHEDULED or ACTIVE, writes `CampaignVersion` snapshot; `reject` (reason) → DRAFT; `pause`/`resume`/`end`; `clone`; edits to an approved campaign create a new version that again needs approval. Every status change publishes `CAMPAIGNS_CHANGED_CHANNEL` (`campaign-cache.service.ts`).
+- Simulator `POST /campaigns/simulate`: terminal + BIN + scheme + amount (+ optional time) → per-campaign verdict from `rankCampaigns` plus current cap headroom from `CountersService.snapshot`; never reserves.
+- Stats `GET /campaigns/:id/stats`: budget used/remaining, redemptions by status, unique cards, confirm rate, daily series, top terminals.
+- Transactions explorer `GET /redemptions` (filter by campaign, status, txn ref, BIN, terminal, date) + detail with event ledger; `GET /inquiries/reasons` (reason-code breakdown).
+
+**2e. Web app** (`apps/web`, Next.js App Router + Tailwind, Waffarha branding via the `waffarha-design` skill)
+
+- `next-intl` with `en`/`ar` messages, `dir="rtl"` for Arabic, number/date formatting per locale and currency.
+- Next.js rewrites `/api/*` → Nest API (same origin, cookie auth). Server components fetch with the forwarded cookie; middleware redirects by role (`/admin/*` staff, `/portal/*` partners).
+- Admin pages: login (Google button), overview dashboard, campaigns list, **campaign wizard** (basics → discount → targeting → limits → funding → schedule → review), campaign detail (live stats, actions, versions), approvals queue, simulator, partners, merchants/branches/terminals (+ CSV upload), acquirers (show-secret-once dialog), transactions explorer, users, audit log.
+
+**Verification 2:** API integration tests (auth via dev-login, RBAC denials, maker-checker, approval → campaign live in the acquirer API within one publish, CSV import errors, simulator matches real inquiry); web smoke tests with Playwright (login, create → submit → approve campaign as two users, simulator, EN/AR screenshots).
+
+### Phase 3 — Settlement, invoicing, partner portal
+
+**Settlement model (configurable per campaign, `settlementMode`)**
+
+- `WAFFARHA_COLLECTS` (default): Waffarha **invoices** each external funder (banks) for their share and **pays the merchant** the bank + Waffarha shares → merchant gets a payout statement. The merchant's own share is shown on its statement as its contribution; no money moves for it.
+- `DIRECT`: funders settle with the merchant themselves; the system issues **statements** (no invoices) to every funder and the merchant showing who owes whom.
+
+**3a. Ledger** — nightly job writes `SettlementEntry` rows from the `RedemptionEvent` ledger: CONFIRMED → +share per funder, REFUNDED / cancel-after-confirm → −share, using each redemption's `fundingSnapshot` (proportional). Entries are dated by event date, so a refund in a later month shows up in that month. Idempotent per event.
+
+**3b. Documents** — month-end job (Africa/Cairo / Asia/Riyadh month boundaries) per partner × currency × period:
+
+- `INVOICE` (funder owes Waffarha): lines per campaign (redemptions, gross funded, refunds, net), VAT by partner country from a `TaxRate` table, numbering `INV-{country}-{year}-{seq}` (per-country sequence, gap-free in a transaction).
+- `PAYOUT_STATEMENT` (Waffarha owes merchant) and `STATEMENT` (DIRECT mode / informational).
+- Lifecycle DRAFT → ISSUED (locks numbers, emails PDF to the partner's billing email) → PAID / OVERDUE (daily job past `dueAt`) / VOID (credit-note style; never deleted).
+- PDF via `pdfkit` (bilingual header, Arabic text shaped with an Arabic-capable font; tables in English) + CSV export.
+- Admin pages: settlements overview, document list/detail, issue/mark paid/void, downloads.
+
+**3c. Partner portal** (`/portal/*` in the same web app, read-only)
+
+- Overview KPIs for campaigns the partner funds (or, for a merchant, runs at its terminals), redemptions list (BIN + masked card hash only), their funded share, documents with PDF/CSV download, CSV export of redemptions.
+- Partner users manage nothing; all data scoped server-side by `partnerId`.
+
+**Verification 3:** unit tests for ledger math (partial refunds across months, rounding stays exact with `splitByShares`), document totals = ledger totals, numbering under concurrency, both settlement modes; portal access tests (partner cannot read another partner's data); PDF renders (EN/AR) checked by screenshot.
+
+### Phase 4 — Hardening & launch readiness
+
+**4a. Alerts** (`Alert` table + notifier with email via SMTP/`nodemailer` and Slack webhook; dev mode logs instead of sending)
+
+- Budget thresholds 50 / 80 / 100 % per campaign (each fired once), daily cap reached, counter drift from the reconcile job, inquiry error rate / p99 latency over threshold, expiry backlog.
+- Fraud signals: card velocity (> N inquiries per card per hour across campaigns), terminal spike (redemptions/hour vs 7-day baseline), many cards on one terminal in minutes. Per-campaign option **auto-pause on fraud alert**.
+- Alerts list + acknowledge in the admin dashboard.
+
+**4b. Safety controls**
+
+- Global kill switch (Redis flag set from the admin UI, audited) → inquire answers `UNAVAILABLE` instantly on all instances.
+- Global max discount per transaction per currency (guardrail applied after the rules engine).
+- Per-card velocity limit enforced in the reserve path (Redis counter), not only alerted.
+
+**4c. Observability** — `/metrics` (prom-client): inquiries by outcome, latency histogram, reserve results, lifecycle calls, job durations; JSON structured logs with request ids; sample Grafana dashboard JSON in `infra/grafana/`.
+
+**4d. Deployability** — Dockerfiles for `api` (API + worker entrypoints) and `web`; `infra/docker-compose.full.yml` running the whole stack; `.env` reference for every variable; migration step on deploy.
+
+**4e. Acquirer onboarding & pilot** — `docs/acquirer-integration-guide.md` (flow, signing examples in Node and bash/openssl, error handling, fail-open rules, test cards/terminals in the sandbox seed), `docs/pilot-runbook.md` (go-live checklist, kill-switch drill, reconciliation routine, rollback).
+
+**Verification 4:** tests for each alert rule and kill switch; load test re-run with metrics on; full stack via docker-compose (if Docker is available in the environment, otherwise local processes) → simulator payment → alert fires → invoice generated → partner portal view.
 
 ### Implementation notes (differences from the original plan)
 

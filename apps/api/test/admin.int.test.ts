@@ -189,22 +189,18 @@ describe('merchant network', () => {
     const branch = (
       await m.post(`/admin/v1/merchants/${merchant.id}/branches`).send({ name: 'Maadi' })
     ).body;
-    const t = await m
-      .post('/admin/v1/terminals')
-      .send({
-        acquirerId: h.net.acquirer.id,
-        externalTerminalId: 'T-NEW',
-        merchantId: merchant.id,
-        branchId: branch.id,
-      });
+    const t = await m.post('/admin/v1/terminals').send({
+      acquirerId: h.net.acquirer.id,
+      externalTerminalId: 'T-NEW',
+      merchantId: merchant.id,
+      branchId: branch.id,
+    });
     expect(t.status).toBe(201);
-    const dup = await m
-      .post('/admin/v1/terminals')
-      .send({
-        acquirerId: h.net.acquirer.id,
-        externalTerminalId: 'T-NEW',
-        merchantId: merchant.id,
-      });
+    const dup = await m.post('/admin/v1/terminals').send({
+      acquirerId: h.net.acquirer.id,
+      externalTerminalId: 'T-NEW',
+      merchantId: merchant.id,
+    });
     expect(dup.body.error.code).toBe('DUPLICATE_TERMINAL');
   });
 

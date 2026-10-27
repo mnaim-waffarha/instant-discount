@@ -44,6 +44,20 @@ pnpm --filter @instant-discount/api sim -- --amount 50000 --refund 10000   # one
 pnpm --filter @instant-discount/api load -- --requests 2000 --concurrency 50
 ```
 
+Web app (port 3001):
+
+```bash
+cp apps/web/.env.example apps/web/.env.local   # NEXT_PUBLIC_DEV_LOGIN=true for local sign-in
+pnpm --filter @instant-discount/web dev
+```
+
+Sign-in: staff use Google (`GOOGLE_CLIENT_ID`, `@waffarha.com` only); partner users get an email
+magic link. Locally, with `DEV_LOGIN=true` (API) and `NEXT_PUBLIC_DEV_LOGIN=true` (web), sign in as
+any seeded user, e.g. `manager@waffarha.com` and `approver@waffarha.com` (campaigns need a
+different user to approve them). `BOOTSTRAP_ADMIN_EMAILS` creates the first admins.
+
+Browser smoke test against the running stack: `node apps/web/e2e/smoke.mjs <screenshot-dir>`.
+
 Tests (the integration tests need Postgres and Redis running; they use the
 `instant_discount_test` database and Redis db 1):
 
