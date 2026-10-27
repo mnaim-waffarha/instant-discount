@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@instant-discount/shared": "workspace:*"
+    "@instant-discount/shared": "workspace:*",
+    "zod": "^3.25.76"
   }
 }

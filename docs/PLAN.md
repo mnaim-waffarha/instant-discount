@@ -38,7 +38,7 @@ POS ──► Acquirer ──(mTLS + HMAC)──► Decision API (NestJS, statel
                                       │  ├─ campaign cache (in-memory, refreshed via Redis pub/sub)
                                       │  └─ Redis Lua: atomic reserve of budget/caps
                                       ▼
-                                  PostgreSQL (source of truth) ◄── Workers (BullMQ):
+                                  PostgreSQL (source of truth) ◄── Worker (scheduled jobs + Redis locks):
                                       ▲                            reservation expiry, reconciliation,
                                       │                            invoicing, alerts, webhooks
 Admin Web / Partner Portal (Next.js) ─► Admin API (NestJS, JWT + RBAC)
@@ -50,8 +50,8 @@ apps; each app is deployed independently but shares the engine, types and DB sch
 ```
 apps/
   api/            NestJS — modules: decision, transactions, campaigns, partners, merchants,
-                  acquirers, invoicing, reports, auth, audit
-  worker/         NestJS standalone — BullMQ jobs
+                  acquirers, invoicing, reports, auth, audit. Two entrypoints from one
+                  codebase: dist/main.js (HTTP) and dist/worker.js (background jobs)
   admin-web/      Next.js — internal ops dashboard
   partner-portal/ Next.js — bank/merchant read-only portal
 packages/
@@ -153,7 +153,26 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 
 **Phase 4 – Hardening & launch (weeks 9–10)** 14. Alerts/monitoring (OpenTelemetry, Prometheus/Grafana), fraud rules, kill switch drills. 15. Acquirer sandbox + integration guide; pilot with one acquirer, one bank, a few merchants.
 
-We start implementation with Phase 0 → Phase 1 on branch `claude/optimistic-cray-navsz4`.
+### Progress
+
+- **Phase 0 — done.** Monorepo, docker-compose, Prisma schema + `init` migration, seed script, CI
+  (build, typecheck, unit + integration tests against Postgres/Redis service containers).
+- **Phase 1 — done.** Rules engine; acquirer API (`docs/api/acquirer-v1.yaml`) with HMAC auth,
+  idempotency and fail-open; Redis Lua reservation; confirm/cancel/refund with event ledger;
+  worker jobs (reservation expiry, campaign SCHEDULED→ACTIVE→ENDED, counter reconciliation);
+  acquirer simulator and load-test scripts.
+
+### Implementation notes (differences from the original plan)
+
+- The worker is a second entrypoint of `apps/api` rather than a separate app, so jobs reuse the
+  same services. Jobs use `@nestjs/schedule` with a Redis lock (one replica runs each job)
+  instead of BullMQ; BullMQ can come later if we need queued, retried work (webhooks, invoices).
+- Load testing is a Node script (`pnpm --filter @instant-discount/api load`) instead of k6.
+- Integration tests run against real Postgres/Redis (local or CI service containers) instead of
+  testcontainers.
+- When a campaign's remaining total budget or a card's remaining amount is smaller than the
+  discount, the campaign is skipped (no partial discount) and the next campaign is tried.
+- If Redis loses a campaign's counters, they are rebuilt from Postgres on the next inquiry.
 
 ## Defaults assumed — to confirm with acquirer/finance during build
 
@@ -166,6 +185,7 @@ We start implementation with Phase 0 → Phase 1 on branch `claude/optimistic-cr
 
 - `pnpm test`: rules-engine unit tests (every discount type, tier boundary, cap, schedule/timezone edge, currency rounding).
 - Integration tests (testcontainers Postgres + Redis): full inquire → confirm / cancel / expire / refund flows, idempotent retries, priority fall-through when top campaign is capped.
-- k6 concurrency test: 1,000 parallel inquiries against a 100-redemption budget → exactly 100 granted; p99 < 150 ms.
-- Simulated acquirer script (`infra/sim-acquirer`) for end-to-end demo against docker-compose.
+- Concurrency test: 300 parallel inquiries against a 100-redemption budget → exactly 100 granted.
+- Load script against a running server: 2,000 inquiries vs a 1,000-card cap → exactly the cap granted.
+- Acquirer simulator script (`pnpm --filter @instant-discount/api sim`) for an end-to-end demo.
 - Manual: create campaign in admin web → approve → run simulator → run sim acquirer → see live dashboard + invoice draft + partner portal view.

@@ -258,6 +258,8 @@ model Redemption {
   discountMinor         BigInt
   finalAmountMinor      BigInt
   refundedDiscountMinor BigInt           @default(0)
+  // Portion of finalAmount (what the customer paid) refunded so far.
+  refundedAmountMinor   BigInt           @default(0)
   // [{ partnerId, shareBps, amountMinor }] captured at reservation time.
   fundingSnapshot       Json
   // Period bucket keys used for the Redis counters, needed to release them exactly.

@@ -1,0 +1,233 @@
+openapi: 3.0.3
+info:
+  title: Waffarha Instant Discount — Acquirer API
+  version: 1.0.0
+  description: |
+    Called by acquirers / payment providers while a card payment is in progress at a POS.
+
+    ## Flow
+    1. **Inquire** before charging the card. If `eligible` is true, charge `final_amount`.
+    2. **Confirm** once the charge succeeds, or **Cancel** if it is declined or voided.
+       A reservation that is neither confirmed nor cancelled expires after `expires_at`
+       (default 10 minutes) and its budget is released.
+    3. **Refund** (full or partial) when the merchant refunds the purchase later.
+
+    ## Timeouts — fail open
+    Use a client timeout of **800 ms** on inquire. On timeout, any error or `eligible: false`,
+    charge the full amount. Never block the payment because of this API.
+    If you charged the full amount after a timeout, do nothing: the reservation expires on its own.
+
+    ## Amounts
+    All amounts are integers in **minor units** (piastres for EGP, halalas for SAR): 125.50 EGP = `12550`.
+
+    ## Authentication
+    Every request is sent over mTLS and carries:
+    - `X-Api-Key`: your key id
+    - `X-Timestamp`: unix time in seconds; requests more than 300 s off are rejected
+    - `X-Signature`: lowercase hex of
+      `HMAC-SHA256(secret, timestamp + "\n" + METHOD + "\n" + path + "\n" + hex(SHA256(raw body)))`,
+      where `path` is the request path including any query string, e.g. `/v1/discounts/inquire`.
+
+    ## Card data
+    Send the card **BIN** (first 6–8 digits) and your **card token** (stable per card).
+    Never send the full card number (PAN); requests that look like they contain one are rejected.
+
+    ## Idempotency
+    `inquire` requires an `Idempotency-Key` header (use your transaction reference). Retrying with
+    the same key returns the original answer. Confirm and cancel are naturally idempotent; refund is
+    idempotent per `refund_id`.
+servers:
+  - url: https://{host}
+    variables:
+      host:
+        default: sandbox.example.com
+        description: Provided per environment during onboarding
+security:
+  - apiKey: []
+paths:
+  /v1/discounts/inquire:
+    post:
+      operationId: inquireDiscount
+      summary: Ask whether a discount applies, and reserve it
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InquireRequest' }
+      responses:
+        '200':
+          description: Decision. Always 200 for a valid request, eligible or not.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Eligible'
+                  - $ref: '#/components/schemas/NotEligible'
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409':
+          {
+            description: Same Idempotency-Key still in progress,
+            $ref: '#/components/responses/Error',
+          }
+        '422':
+          {
+            description: Idempotency-Key reused with a different body,
+            $ref: '#/components/responses/Error',
+          }
+  /v1/discounts/{redemption_id}/confirm:
+    post:
+      operationId: confirmDiscount
+      summary: The discounted charge succeeded
+      parameters: [{ $ref: '#/components/parameters/RedemptionId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [charged_amount]
+              properties:
+                charged_amount: { type: integer, description: Must equal final_amount }
+                auth_code: { type: string, maxLength: 32 }
+      responses:
+        '200': { $ref: '#/components/responses/Redemption' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          {
+            description: 'REDEMPTION_CANCELLED or RESERVATION_EXPIRED',
+            $ref: '#/components/responses/Error',
+          }
+        '422': { description: AMOUNT_MISMATCH, $ref: '#/components/responses/Error' }
+  /v1/discounts/{redemption_id}/cancel:
+    post:
+      operationId: cancelDiscount
+      summary: The charge was declined or voided — release the discount
+      parameters: [{ $ref: '#/components/parameters/RedemptionId' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 128 }
+      responses:
+        '200': { $ref: '#/components/responses/Redemption' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: USE_REFUND (already refunded), $ref: '#/components/responses/Error' }
+  /v1/discounts/{redemption_id}/refund:
+    post:
+      operationId: refundDiscount
+      summary: Refund all or part of a confirmed purchase
+      description: The discount is reversed in the same proportion as the refund.
+      parameters: [{ $ref: '#/components/parameters/RedemptionId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refund_id, amount]
+              properties:
+                refund_id: { type: string, maxLength: 64, description: Your unique refund id }
+                amount:
+                  {
+                    type: integer,
+                    description: 'Amount returned to the customer, out of final_amount',
+                  }
+      responses:
+        '200': { $ref: '#/components/responses/Redemption' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          { description: 'NOT_CONFIRMED or ALREADY_REFUNDED', $ref: '#/components/responses/Error' }
+        '422': { description: REFUND_EXCEEDS_PAID, $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    apiKey: { type: apiKey, in: header, name: X-Api-Key }
+  parameters:
+    RedemptionId:
+      in: path
+      name: redemption_id
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    InquireRequest:
+      type: object
+      required: [terminal_id, bin, card_token, scheme, amount, currency, acquirer_txn_ref]
+      properties:
+        terminal_id: { type: string, description: Terminal id (TID) as registered with Waffarha }
+        merchant_id: { type: string, description: 'Your merchant id (MID), informational only' }
+        bin: { type: string, pattern: '^\d{6,8}$' }
+        card_token:
+          {
+            type: string,
+            minLength: 8,
+            maxLength: 256,
+            description: Stable token for the card; never the PAN,
+          }
+        scheme: { type: string, enum: [VISA, MASTERCARD, MEEZA, MADA, AMEX] }
+        amount: { type: integer, minimum: 1 }
+        currency: { type: string, enum: [EGP, SAR] }
+        acquirer_txn_ref: { type: string, maxLength: 64 }
+    Eligible:
+      type: object
+      properties:
+        eligible: { type: boolean, enum: [true] }
+        redemption_id: { type: string, format: uuid }
+        campaign_id: { type: string, format: uuid }
+        original_amount: { type: integer }
+        discount_amount: { type: integer }
+        final_amount: { type: integer, description: Charge this amount }
+        currency: { type: string }
+        expires_at: { type: string, format: date-time, description: Confirm before this time }
+        display_message:
+          { type: string, nullable: true, description: Optional text for the POS screen / receipt }
+        display_message_ar: { type: string, nullable: true }
+    NotEligible:
+      type: object
+      properties:
+        eligible: { type: boolean, enum: [false] }
+        reason:
+          type: string
+          enum:
+            [UNKNOWN_TERMINAL, TERMINAL_INACTIVE, NO_ELIGIBLE_CAMPAIGN, LIMITS_REACHED, UNAVAILABLE]
+    Redemption:
+      type: object
+      properties:
+        redemption_id: { type: string }
+        status:
+          {
+            type: string,
+            enum: [RESERVED, CONFIRMED, RELEASED, EXPIRED, PARTIALLY_REFUNDED, REFUNDED],
+          }
+        campaign_id: { type: string }
+        currency: { type: string }
+        original_amount: { type: integer }
+        discount_amount: { type: integer }
+        final_amount: { type: integer }
+        refunded_amount: { type: integer }
+        refunded_discount_amount: { type: integer }
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+  responses:
+    Redemption:
+      description: Current state of the redemption
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Redemption' }
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
