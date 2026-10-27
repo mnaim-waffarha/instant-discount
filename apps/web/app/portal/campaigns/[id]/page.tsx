@@ -10,6 +10,7 @@ import {
   RedemptionStatusBadge,
   Table,
 } from '@/components/ui';
+import { PerformanceCard } from '@/components/PerformanceCard';
 import { useApi, type Page } from '@/lib/api';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -51,6 +52,9 @@ export default function PortalCampaign({ params }: { params: Promise<{ id: strin
           </a>
         }
       />
+      <div className="mb-6">
+        <PerformanceCard path={`/portal/campaigns/${id}/performance`} />
+      </div>
       <Card title={t('portal.payments')}>
         <ErrorBox error={rows.error} />
         <div className="-m-5">

@@ -1,12 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import type { CampaignStatus } from '@instant-discount/db';
 import {
+  HOLDOUT,
+  assignGroup,
   evaluateCampaign,
   periodKey,
   rankCampaigns,
   type TransactionContext,
 } from '@instant-discount/rules-engine';
-import { toActiveCampaign, type ActiveCampaign } from '../../campaigns/campaign-cache.service';
+import { Inject } from '@nestjs/common';
+import { APP_CONFIG, type AppConfig } from '../../config';
+import { hashCardToken } from '../../common/crypto';
+import {
+  CAMPAIGN_INCLUDE,
+  toActiveCampaign,
+  type ActiveCampaign,
+} from '../../campaigns/campaign-cache.service';
 import { notFound } from '../../common/api-error';
 import { CountersService, USAGE_STATUSES } from '../../counters/counters.service';
 import { PrismaService } from '../../infra/prisma.service';
@@ -18,6 +27,8 @@ export interface SimulateInput {
   amountMinor: number;
   at?: Date;
   includeInactive: boolean;
+  /** Optional: shows the card's holdout/A-B group for each campaign. */
+  cardToken?: string;
 }
 
 /** Remaining headroom for one transaction; null = unlimited. */
@@ -33,6 +44,7 @@ export class CampaignInsightsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly counters: CountersService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   /**
@@ -48,6 +60,9 @@ export class CampaignInsightsService {
     });
     if (!terminal) throw notFound('TERMINAL_NOT_FOUND', 'No such terminal');
     const now = input.at ?? new Date();
+    const cardHash = input.cardToken
+      ? hashCardToken(this.config.CARD_TOKEN_PEPPER, input.cardToken)
+      : null;
     const currency = terminal.merchant.country === 'EG' ? 'EGP' : 'SAR';
     const txn: TransactionContext = {
       country: terminal.merchant.country,
@@ -66,7 +81,7 @@ export class CampaignInsightsService {
       : ['ACTIVE'];
     const rows = await this.prisma.campaign.findMany({
       where: { country: txn.country, status: { in: statuses } },
-      include: { fundings: true },
+      include: CAMPAIGN_INCLUDE,
     });
     const campaigns = rows.flatMap((r) => {
       try {
@@ -78,13 +93,22 @@ export class CampaignInsightsService {
 
     const results = await Promise.all(
       campaigns.map(async ({ row, active }) => {
-        const asLive = { ...active.rule, status: 'ACTIVE' as const };
+        // With a card, evaluate it exactly as a payment would: with its group's discount.
+        const group = cardHash ? assignGroup(active.experiment, cardHash) : null;
+        const variant = group ? active.experiment.variants.find((v) => v.key === group) : undefined;
+        const asLive = {
+          ...active.rule,
+          status: 'ACTIVE' as const,
+          ...(variant ? { discount: variant.discount } : {}),
+        };
         const verdict = evaluateCampaign(asLive, txn, now);
         const headroom = await this.headroom(active, now);
         const capped = verdict.eligible ? cappedBy(headroom, verdict.discountMinor) : null;
         return {
           campaignId: row.id,
           name: row.name,
+          group,
+          heldOut: group === HOLDOUT,
           status: row.status,
           priority: row.priority,
           eligible: verdict.eligible,
@@ -100,7 +124,7 @@ export class CampaignInsightsService {
     // The campaign a real payment would get right now: live, eligible, not capped, best ranked.
     const usable = new Set(
       results
-        .filter((r) => r.status === 'ACTIVE' && r.eligible && !r.cappedBy)
+        .filter((r) => r.status === 'ACTIVE' && r.eligible && !r.cappedBy && !r.heldOut)
         .map((r) => r.campaignId),
     );
     const ranked = rankCampaigns(
@@ -129,7 +153,7 @@ export class CampaignInsightsService {
   async stats(campaignId: string) {
     const campaign = await this.prisma.campaign.findUnique({
       where: { id: campaignId },
-      include: { fundings: true },
+      include: CAMPAIGN_INCLUDE,
     });
     if (!campaign) throw notFound('CAMPAIGN_NOT_FOUND', 'No such campaign');
 

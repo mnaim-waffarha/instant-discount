@@ -10,6 +10,7 @@ import { SessionService } from './auth/session.service';
 import { CampaignsController, SimulatorController } from './campaigns/campaigns.controller';
 import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignInsightsService } from './campaigns/insights.service';
+import { PerformanceService } from '../reports/performance.service';
 import { ExplorerController } from './explorer/explorer.controller';
 import { NetworkController } from './network/network.controller';
 import { PartnersController } from './partners/partners.controller';
@@ -28,13 +29,14 @@ import { UsersController } from './users/users.controller';
     ExplorerController,
     AuditController,
   ],
-  exports: [SessionService, AdminAuthGuard],
+  exports: [SessionService, AdminAuthGuard, PerformanceService],
   providers: [
     AuthService,
     SessionService,
     RateLimiter,
     CampaignsService,
     CampaignInsightsService,
+    PerformanceService,
     AdminAuthGuard,
   ],
 })

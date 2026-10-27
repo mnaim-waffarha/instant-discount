@@ -19,8 +19,26 @@ export const COUNTRY = {
 
 export const SCHEMES: Scheme[] = ['VISA', 'MASTERCARD', 'MEEZA', 'MADA', 'AMEX'];
 
+/** A discount as typed in the form (money in major units). Used for the campaign and each variant. */
+export interface DiscountFields {
+  discountType: DiscountConfig['type'];
+  percent: string;
+  maxDiscount: string;
+  minSpend: string;
+  fixedAmount: string;
+  tiers: Array<{ minSpend: string; percent: string; amount: string; maxDiscount: string }>;
+}
+
+/** An extra A/B variant (B or C); variant A is the campaign's own discount. */
+export interface VariantForm {
+  key: 'B' | 'C';
+  name: string;
+  weight: string;
+  fields: DiscountFields;
+}
+
 /** Wizard form state: everything as strings, exactly as typed. Money is in major units. */
-export interface CampaignForm {
+export interface CampaignForm extends DiscountFields {
   name: string;
   nameAr: string;
   description: string;
@@ -30,12 +48,12 @@ export interface CampaignForm {
   displayMessageAr: string;
   settlementMode: CampaignInput['settlementMode'];
   autoPauseOnFraud: boolean;
-  discountType: DiscountConfig['type'];
-  percent: string;
-  maxDiscount: string;
-  minSpend: string;
-  fixedAmount: string;
-  tiers: Array<{ minSpend: string; percent: string; amount: string; maxDiscount: string }>;
+  /** Percentage of eligible cards kept without the discount (0–20). */
+  holdoutPct: string;
+  abTest: boolean;
+  variantAName: string;
+  variantAWeight: string;
+  variants: VariantForm[];
   bins: Array<{ from: string; to: string }>;
   schemes: Scheme[];
   merchantIds: string[];
@@ -68,12 +86,12 @@ export function emptyForm(country: Country = 'EG'): CampaignForm {
     displayMessageAr: '',
     settlementMode: 'WAFFARHA_COLLECTS',
     autoPauseOnFraud: false,
-    discountType: 'PERCENT',
-    percent: '20',
-    maxDiscount: '',
-    minSpend: '',
-    fixedAmount: '',
-    tiers: [{ minSpend: '', percent: '', amount: '', maxDiscount: '' }],
+    ...emptyDiscount(),
+    holdoutPct: '0',
+    abTest: false,
+    variantAName: 'A',
+    variantAWeight: '50',
+    variants: [],
     bins: [],
     schemes: [],
     merchantIds: [],
@@ -97,21 +115,39 @@ const s = (v: number | null | undefined) => (v === null || v === undefined ? '' 
 const hhmm = (minute: number) =>
   `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
 
-/** Loads a campaign (or its pending change) into the form. */
-export function formFromInput(c: CampaignInput): CampaignForm {
-  const d = c.discount;
-  const base = emptyForm(c.country);
+export function emptyDiscount(): DiscountFields {
   return {
-    ...base,
-    name: c.name,
-    nameAr: c.nameAr ?? '',
-    description: c.description ?? '',
-    country: c.country,
-    priority: String(c.priority),
-    displayMessage: c.displayMessage ?? '',
-    displayMessageAr: c.displayMessageAr ?? '',
-    settlementMode: c.settlementMode,
-    autoPauseOnFraud: c.autoPauseOnFraud ?? false,
+    discountType: 'PERCENT',
+    percent: '20',
+    maxDiscount: '',
+    minSpend: '',
+    fixedAmount: '',
+    tiers: [{ minSpend: '', percent: '', amount: '', maxDiscount: '' }],
+  };
+}
+
+export function pickDiscount(f: DiscountFields): DiscountFields {
+  const { discountType, percent, maxDiscount, minSpend, fixedAmount, tiers } = f;
+  return { discountType, percent, maxDiscount, minSpend, fixedAmount, tiers };
+}
+
+/** One-line description of a discount, e.g. "20% · max 100 EGP · min 200 EGP". */
+export function describeDiscount(d: DiscountConfig, money: (minor: number) => string): string {
+  if (d.type === 'PERCENT')
+    return `${d.percentBps / 100}%${d.maxDiscountMinor ? ` · max ${money(d.maxDiscountMinor)}` : ''}${d.minSpendMinor ? ` · min ${money(d.minSpendMinor)}` : ''}`;
+  if (d.type === 'FIXED')
+    return `${money(d.amountMinor)}${d.minSpendMinor ? ` · min ${money(d.minSpendMinor)}` : ''}`;
+  return d.tiers
+    .map(
+      (tier) =>
+        `≥ ${money(tier.minSpendMinor)}: ${'percentBps' in tier ? `${tier.percentBps / 100}%` : money(tier.amountMinor)}`,
+    )
+    .join(' · ');
+}
+
+export function fieldsFromDiscount(d: DiscountConfig): DiscountFields {
+  const base = emptyDiscount();
+  return {
     discountType: d.type,
     percent: d.type === 'PERCENT' ? String(d.percentBps / 100) : base.percent,
     maxDiscount: d.type === 'PERCENT' ? fromMinor(d.maxDiscountMinor) : '',
@@ -126,6 +162,38 @@ export function formFromInput(c: CampaignInput): CampaignForm {
             maxDiscount: 'percentBps' in tier ? fromMinor(tier.maxDiscountMinor) : '',
           }))
         : base.tiers,
+  };
+}
+
+/** Loads a campaign (or its pending change) into the form. */
+export function formFromInput(c: CampaignInput): CampaignForm {
+  const base = emptyForm(c.country);
+  const variants = c.variants ?? [];
+  const control = variants.find((v) => v.key === 'A');
+  return {
+    ...base,
+    name: c.name,
+    nameAr: c.nameAr ?? '',
+    description: c.description ?? '',
+    country: c.country,
+    priority: String(c.priority),
+    displayMessage: c.displayMessage ?? '',
+    displayMessageAr: c.displayMessageAr ?? '',
+    settlementMode: c.settlementMode,
+    autoPauseOnFraud: c.autoPauseOnFraud ?? false,
+    ...fieldsFromDiscount(control?.discount ?? c.discount),
+    holdoutPct: String((c.holdoutBps ?? 0) / 100),
+    abTest: variants.length > 1,
+    variantAName: control?.name ?? 'A',
+    variantAWeight: control ? String(control.weightBps / 100) : '50',
+    variants: variants
+      .filter((v) => v.key !== 'A')
+      .map((v) => ({
+        key: v.key as 'B' | 'C',
+        name: v.name,
+        weight: String(v.weightBps / 100),
+        fields: fieldsFromDiscount(v.discount),
+      })),
     bins: c.targeting.binRanges ?? [],
     schemes: c.targeting.schemes ?? [],
     merchantIds: c.targeting.merchantIds ?? [],
@@ -177,6 +245,13 @@ export function campaignToInput(c: Campaign): CampaignInput {
     fundings: c.fundings.map((f) => ({ partnerId: f.partnerId, shareBps: f.shareBps })),
     settlementMode: c.settlementMode,
     autoPauseOnFraud: c.autoPauseOnFraud,
+    holdoutBps: c.holdoutBps ?? 0,
+    variants: (c.variants ?? []).map((v) => ({
+      key: v.key,
+      name: v.name,
+      weightBps: v.weightBps,
+      discount: v.discountConfig,
+    })),
   };
 }
 
@@ -187,9 +262,8 @@ const minutes = (hm: string) => {
   return (h ?? 0) * 60 + (m ?? 0);
 };
 
-/** Form → API payload. The server does the real validation and reports every problem. */
-export function formToInput(f: CampaignForm): CampaignInput {
-  const { currency, timezone } = COUNTRY[f.country];
+/** Discount fields → API discount config. */
+export function discountFromFields(f: DiscountFields): DiscountConfig {
   const opt = (v: string) => toMinor(v) ?? undefined;
   let discount: DiscountConfig;
   if (f.discountType === 'PERCENT') {
@@ -219,6 +293,29 @@ export function formToInput(f: CampaignForm): CampaignInput {
       ),
     };
   }
+  return discount;
+}
+
+/** Form → API payload. The server does the real validation and reports every problem. */
+export function formToInput(f: CampaignForm): CampaignInput {
+  const { currency, timezone } = COUNTRY[f.country];
+  const discount = discountFromFields(f);
+  const variants = f.abTest
+    ? [
+        {
+          key: 'A' as const,
+          name: f.variantAName.trim() || 'A',
+          weightBps: bps(f.variantAWeight),
+          discount,
+        },
+        ...f.variants.map((v) => ({
+          key: v.key,
+          name: v.name.trim() || v.key,
+          weightBps: bps(v.weight),
+          discount: discountFromFields(v.fields),
+        })),
+      ]
+    : [];
   const mccs = f.mccs.split(/[\s,]+/).filter(Boolean);
   return {
     name: f.name.trim(),
@@ -262,5 +359,8 @@ export function formToInput(f: CampaignForm): CampaignInput {
       .filter((x) => x.partnerId)
       .map((x) => ({ partnerId: x.partnerId, shareBps: bps(x.share) })),
     settlementMode: f.settlementMode,
+    autoPauseOnFraud: f.autoPauseOnFraud,
+    holdoutBps: bps(f.holdoutPct || '0'),
+    variants,
   };
 }

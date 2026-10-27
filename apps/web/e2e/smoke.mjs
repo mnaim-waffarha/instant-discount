@@ -62,7 +62,15 @@ async function signIn(email) {
     timeStyle: 'short',
   }).format(new Date(Date.now() - 3600_000));
   await page.locator('input[type="datetime-local"]').first().fill(cairoNow.replace(' ', 'T'));
+  await page.getByRole('button', { name: 'Next' }).click(); // → experiment
+  await page.getByRole('textbox', { name: 'Holdout group' }).fill('10');
+  await page.getByLabel('Run an A/B test').check();
+  const variantB = page.locator('[data-variant="B"]');
+  await variantB.getByRole('button', { name: 'Fixed amount' }).click();
+  await variantB.locator('label:has-text("Amount off") input').fill('40');
+  await page.screenshot({ path: `${OUT}/02b-wizard-experiment-en.png`, fullPage: true });
   await page.getByRole('button', { name: 'Next' }).click(); // → review
+  check((await page.getByText(/B “B” 50%/).count()) > 0, 'review lists the A/B variants');
   await page.screenshot({ path: `${OUT}/02-wizard-review-en.png`, fullPage: true });
   await page.getByRole('button', { name: 'Save and submit' }).click();
   await page.waitForURL(/\/admin\/campaigns\/[0-9a-f-]{36}$/);
@@ -132,20 +140,24 @@ let campaignUrl;
     if (idem) headers['Idempotency-Key'] = idem;
     return (await fetch(API + path, { method: 'POST', headers, body: raw })).json();
   };
-  const ref = `e2e-${Date.now()}`;
-  const inq = await post(
-    '/v1/discounts/inquire',
-    {
-      terminal_id: 'TID0001',
-      bin: '412345',
-      card_token: `tok_${ref}`,
-      scheme: 'VISA',
-      amount: 50000,
-      currency: 'EGP',
-      acquirer_txn_ref: ref,
-    },
-    ref,
-  );
+  // 10% of cards are in the holdout and get no discount from this campaign; try a few cards.
+  let inq;
+  for (let i = 0; i < 10 && !inq?.eligible; i++) {
+    const ref = `e2e-${Date.now()}-${i}`;
+    inq = await post(
+      '/v1/discounts/inquire',
+      {
+        terminal_id: 'TID0001',
+        bin: '412345',
+        card_token: `tok_${ref}`,
+        scheme: 'VISA',
+        amount: 50000,
+        currency: 'EGP',
+        acquirer_txn_ref: ref,
+      },
+      ref,
+    );
+  }
   check(inq.eligible === true, 'acquirer payment got a discount');
   const conf = await post(`/v1/discounts/${inq.redemption_id}/confirm`, {
     charged_amount: inq.final_amount,
@@ -153,6 +165,14 @@ let campaignUrl;
   check(conf.status === 'CONFIRMED', 'acquirer confirmed the payment');
 
   const { context, page } = await signIn('finance@waffarha.com');
+  await page.goto(campaignUrl);
+  await page.getByTestId('performance').waitFor();
+  check(
+    (await page.getByText('Holdout (no discount)').count()) > 0 ||
+      (await page.getByText(/Cards|Spend per card/).count()) > 0,
+    'campaign page shows the performance & experiment card',
+  );
+  await page.screenshot({ path: `${OUT}/03b-performance-en.png`, fullPage: true });
   await page.goto(`${BASE}/admin/settlements`);
   const month = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Africa/Cairo',
@@ -198,6 +218,13 @@ let campaignUrl;
   await page.getByRole('button', { name: 'العربية' }).click();
   await page.waitForLoadState('networkidle');
   await page.screenshot({ path: `${OUT}/11-portal-documents-ar.png`, fullPage: true });
+  await page.goto(`${BASE}/portal/campaigns/${campaignUrl.split('/').pop()}`);
+  await page.getByTestId('performance').waitFor();
+  check(
+    (await page.getByText('الأداء والتجربة').count()) > 0,
+    'bank sees the performance card in Arabic',
+  );
+  await page.screenshot({ path: `${OUT}/11b-portal-performance-ar.png`, fullPage: true });
   await page.getByRole('button', { name: 'English' }).click();
   await context.close();
 }

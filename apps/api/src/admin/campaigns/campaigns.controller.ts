@@ -7,8 +7,10 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { User } from '@instant-discount/db';
 import { z } from 'zod';
 import { ZodPipe } from '../../common/zod-pipe';
@@ -19,6 +21,7 @@ import { optionalQueryString, pageArgs, pageQuery, toPage } from '../common/pagi
 import { campaignInput, type CampaignInput } from './campaign-input';
 import { CampaignsService } from './campaigns.service';
 import { CampaignInsightsService, type SimulateInput } from './insights.service';
+import { PerformanceService } from '../../reports/performance.service';
 
 const status = z.enum(['DRAFT', 'PENDING_APPROVAL', 'SCHEDULED', 'ACTIVE', 'PAUSED', 'ENDED']);
 const listQuery = pageQuery.extend({
@@ -29,6 +32,7 @@ const listQuery = pageQuery.extend({
   awaitingApproval: z.enum(['true', 'false']).optional(),
 });
 const rejectInput = z.object({ reason: z.string().min(1).max(500) });
+const periodQuery = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() });
 const simulateInput = z.object({
   terminalId: z.string().uuid(),
   bin: z.string().regex(/^\d{6,8}$/),
@@ -36,6 +40,7 @@ const simulateInput = z.object({
   amountMinor: z.number().int().positive(),
   at: z.coerce.date().optional(),
   includeInactive: z.boolean().default(true),
+  cardToken: z.string().min(8).max(256).optional(),
 });
 
 @Controller('admin/v1/campaigns')
@@ -45,7 +50,32 @@ export class CampaignsController {
     private readonly prisma: PrismaService,
     private readonly campaigns: CampaignsService,
     private readonly insights: CampaignInsightsService,
+    private readonly performance: PerformanceService,
   ) {}
+
+  /** Uplift vs holdout and A/B comparison; `from`/`to` limit the window (e.g. after a change). */
+  @Get(':id/performance')
+  performanceReport(
+    @Param('id') id: string,
+    @Query(new ZodPipe(periodQuery)) q: z.infer<typeof periodQuery>,
+  ) {
+    return this.performance.report(id, q);
+  }
+
+  @Get(':id/performance.csv')
+  async performanceCsv(
+    @Param('id') id: string,
+    @Query(new ZodPipe(periodQuery)) q: z.infer<typeof periodQuery>,
+    @Res() res: Response,
+  ) {
+    const report = await this.performance.report(id, q);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="performance-${id.slice(0, 8)}.csv"`,
+    );
+    res.send(this.performance.toCsv(report));
+  }
 
   @Get()
   async list(@Query(new ZodPipe(listQuery)) q: z.infer<typeof listQuery>) {
@@ -84,6 +114,7 @@ export class CampaignsController {
       include: {
         fundings: { include: { partner: { select: { id: true, name: true, type: true } } } },
         versions: { select: { version: true, createdAt: true }, orderBy: { version: 'desc' } },
+        variants: { orderBy: { key: 'asc' } },
       },
     });
   }

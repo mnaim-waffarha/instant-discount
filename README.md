@@ -36,6 +36,10 @@ limit apply to every payment (Admin → Safety). Budget, health and fraud alerts
 dashboard, admin email and Slack; campaigns can opt in to pause automatically on fraud alerts.
 `/metrics` exposes Prometheus metrics.
 
+Experiments: a campaign can keep a holdout group (cards that get no discount) and split the rest
+between up to three A/B variants. The campaign page and the partner portal report the uplift
+in spend per card against the holdout, with confidence intervals and ROI.
+
 ## Run the whole stack in Docker
 
 ```bash

@@ -155,6 +155,21 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 
 ### Progress
 
+- **Phase 6 — done.** Holdout groups (0–20 % of eligible cards get a plain
+  `NO_ELIGIBLE_CAMPAIGN`, so the acquirer can't tell) and A/B variants (up to 3, differing in
+  discount level, type or minimum spend). Assignment is deterministic per card
+  (`sha256(campaign:salt:card) mod 10000`, `packages/rules-engine/src/experiment.ts`). Exposures
+  are recorded off the payment path. Report (`GET /admin/v1/campaigns/:id/performance` + `.csv`,
+  and the portal equivalent) gives spend per card per group, uplift vs holdout with 95 % CI and
+  p-value (Welch, normal approximation), incremental spend, ROI, and a winner only when significant
+  with ≥ 100 cards per group. Wizard **Experiment** step, performance card (admin + portal, EN/AR),
+  and the simulator shows a card's group.
+- **Phase 5 — done (up to the cluster).** `/health/live` vs `/health` readiness, worker
+  health/metrics server, runtime web config (one image for every environment), Helm chart (API
+  with HPA/PDB, worker, web, PreSync migration job, mTLS acquirer ingress, NetworkPolicy,
+  ServiceMonitor), per-environment values and Sealed Secrets templates, Argo CD Applications
+  (staging auto-sync, production manual), CI chart/image checks and a release workflow that pins
+  image digests. An actual sync needs the platform team (`deploy/README.md`).
 - **Phase 0 — done.** Monorepo, docker-compose, Prisma schema + `init` migration, seed script, CI
   (build, typecheck, unit + integration tests against Postgres/Redis service containers).
 - **Phase 4 — done.** Alerts (budget 50/80/100 %, daily caps, fail-open rate, latency, expiry
@@ -285,7 +300,11 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
   next run as a credit (a negative line). Voiding a document releases its entries for the next run.
   Drafting invoices fails if no VAT rate is configured for the country (never a silent 0%).
 - Portal figures are live estimates (net of refunds); issued documents are the official amounts.
-- Metrics are exposed by the API process only; the worker logs job outcomes (no HTTP server).
+- The worker serves `/health`, `/health/live` and `/metrics` on `WORKER_PORT` (Phase 5).
+- Experiments are intent-to-treat: a card's exposure is counted for the highest-priority campaign
+  it was eligible for, even when held out. A held-out card may still get a lower-priority campaign.
+  Changing the holdout or the variants of a live campaign restarts the comparison; read the report
+  with `from` set to the change date.
 - The web app proxies /api/* with a runtime route handler (not a build-time rewrite), so one image
   serves every environment via API_URL.
 

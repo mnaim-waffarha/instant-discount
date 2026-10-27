@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { use, useState } from 'react';
 import { DailyChart } from '@/components/DailyChart';
+import { PerformanceCard } from '@/components/PerformanceCard';
 import {
   Badge,
   Button,
@@ -19,7 +20,7 @@ import {
   Stat,
 } from '@/components/ui';
 import { api, useApi, type ApiError } from '@/lib/api';
-import { discountLabel } from '@/lib/campaign';
+import { describeDiscount, discountLabel } from '@/lib/campaign';
 import { formatDateTime, formatMoney, formatNumber } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { APPROVERS, EDITORS, useSession } from '@/lib/session';
@@ -236,6 +237,13 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
           </Card>
         </div>
 
+        {c.status !== 'DRAFT' && c.status !== 'PENDING_APPROVAL' && (
+          <PerformanceCard
+            path={`/campaigns/${id}/performance`}
+            csvHref={`/api/campaigns/${id}/performance.csv`}
+          />
+        )}
+
         <Card title={t('campaign.configuration')}>
           <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
             {(
@@ -264,6 +272,18 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
                 ],
                 ['wizard.settlement', t(`wizard.settlement.${c.settlementMode}`)],
                 ['wizard.displayMessage', c.displayMessage ?? '—'],
+                ['wizard.holdout', `${(c.holdoutBps ?? 0) / 100}%`],
+                [
+                  'wizard.variants',
+                  c.variants?.length
+                    ? c.variants
+                        .map(
+                          (v) =>
+                            `${v.key} “${v.name}” ${v.weightBps / 100}%: ${describeDiscount(v.discountConfig, (m) => formatMoney(m, c.currency, locale))}`,
+                        )
+                        .join(' | ')
+                    : t('wizard.noAbTest'),
+                ],
               ] as Array<[MessageKey, string]>
             ).map(([k, v]) => (
               <div key={k}>

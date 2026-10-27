@@ -483,6 +483,55 @@ export const en = {
   'safety.spikeMin': 'Terminal spike: at least (per hour)',
   'safety.cards10': 'Different cards per terminal in 10 min',
   'safety.saved': 'Saved. All servers use the new values within seconds.',
+  // Experiments (holdout & A/B)
+  'wizard.stepExperiment': 'Experiment',
+  'wizard.experimentLiveNote':
+    'This campaign is live. Changing the holdout or the variants restarts the comparison: results from before the change are not comparable, so read the report from the change date.',
+  'wizard.holdout': 'Holdout group',
+  'wizard.holdoutHint':
+    'Share of eligible cards that get no discount (0–20%). Comparing their spend with the cards that got the discount shows the real uplift. Each card stays in its group for the whole campaign.',
+  'wizard.holdoutNone': 'No holdout: the report cannot measure uplift.',
+  'wizard.abTest': 'Run an A/B test',
+  'wizard.abTestHint':
+    'Split cards between up to three discounts (level, type or minimum spend) and compare which one earns more per discount spent.',
+  'wizard.variantName': 'Variant name',
+  'wizard.variantWeight': 'Share of cards %',
+  'wizard.variantAHint': 'Variant A uses the discount from the Discount step.',
+  'wizard.addVariant': 'Add variant C',
+  'wizard.splitEvenly': 'Split evenly',
+  'wizard.variants': 'A/B variants',
+  'wizard.noAbTest': 'No A/B test',
+  'perf.title': 'Performance & experiment',
+  'perf.period': 'From {from} to {to}',
+  'perf.none':
+    'This campaign has no holdout or A/B test. Add a holdout to measure the uplift the discount brings.',
+  'perf.notEnough': 'Not enough data for a verdict yet: each group needs at least {n} cards.',
+  'perf.verdictUp':
+    'Cards that got {name} spent {pct} more per card than the holdout (95% CI {lo} to {hi}).',
+  'perf.verdictDown':
+    'Cards that got {name} spent {pct} less per card than the holdout (95% CI {lo} to {hi}).',
+  'perf.significant': 'Significant.',
+  'perf.notSignificant': 'Not significant yet.',
+  'perf.roi': 'Extra spend {spend} for {cost} of discount: {roi} per 1 of discount.',
+  'perf.winner': 'Best variant so far: {name}.',
+  'perf.noWinner': 'No clear winner between the variants yet.',
+  'perf.group': 'Group',
+  'perf.group.HOLDOUT': 'Holdout (no discount)',
+  'perf.cards': 'Cards',
+  'perf.payments': 'Payments',
+  'perf.spendPerCard': 'Spend per card',
+  'perf.avgBasket': 'Average basket',
+  'perf.paymentsPerCard': 'Payments per card',
+  'perf.repeatRate': 'Repeat cards',
+  'perf.costPerPayment': 'Discount per payment',
+  'perf.uplift': 'Uplift vs holdout',
+  'perf.pValue': 'p-value',
+  'perf.chartTitle': 'Spend per card, with 95% confidence interval',
+  'perf.ciTooltip': '95% CI {lo} – {hi} · {cards} cards',
+  'sim.cardToken': 'Card token (optional)',
+  'sim.cardTokenHint': 'Shows which holdout / A/B group this card is in.',
+  'sim.group': 'Group',
+  'sim.heldOut': 'Holdout: no discount',
 } as const;
 
 export type MessageKey = keyof typeof en;

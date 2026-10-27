@@ -59,6 +59,13 @@ export interface CampaignInput {
   fundings: Array<{ partnerId: string; shareBps: number }>;
   settlementMode: 'WAFFARHA_COLLECTS' | 'DIRECT';
   autoPauseOnFraud?: boolean;
+  holdoutBps?: number;
+  variants?: Array<{
+    key: 'A' | 'B' | 'C';
+    name: string;
+    weightBps: number;
+    discount: DiscountConfig;
+  }>;
 }
 
 export interface Partner {
@@ -100,6 +107,13 @@ export interface Campaign {
   perCardPeriod: Limits['perCardPeriod'] | null;
   settlementMode: CampaignInput['settlementMode'];
   autoPauseOnFraud: boolean;
+  holdoutBps: number;
+  variants?: Array<{
+    key: 'A' | 'B' | 'C';
+    name: string;
+    weightBps: number;
+    discountConfig: DiscountConfig;
+  }>;
   createdById: string | null;
   updatedById: string | null;
   submittedById: string | null;
@@ -272,4 +286,52 @@ export interface SettlementDocument {
     reversedMinor: number;
     netMinor: number;
   }>;
+}
+
+export interface Comparison {
+  diff: number;
+  se: number;
+  ci95: [number, number];
+  z: number | null;
+  pValue: number;
+  relative: number | null;
+  significant: boolean;
+}
+
+export interface PerformanceGroup {
+  group: string;
+  cards: number;
+  payments: number;
+  spendMinor: number;
+  spendPerCardMinor: number;
+  spendPerCardCi95: [number, number] | null;
+  avgBasketMinor: number;
+  paymentsPerCard: number;
+  repeatRatePct: number;
+  discountMinor: number;
+  costPerPaymentMinor: number | null;
+}
+
+export interface PerformanceReport {
+  campaignId: string;
+  currency: string;
+  from: string;
+  to: string;
+  holdoutBps: number;
+  variants: Array<{ key: string; name: string; weightBps: number }>;
+  groups: PerformanceGroup[];
+  uplift: Array<{
+    group: string;
+    vsHoldout:
+      | (Comparison & {
+          incrementalSpendMinor: number;
+          incrementalCi95: [number, number];
+          roi: number | null;
+        })
+      | null;
+    vsControl: Comparison | null;
+  }>;
+  enoughData: boolean;
+  minCardsPerGroup: number;
+  winner: string | null;
 }

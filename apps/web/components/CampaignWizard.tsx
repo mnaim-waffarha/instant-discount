@@ -3,11 +3,20 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, useApi, type Page, ApiError } from '@/lib/api';
-import { COUNTRY, SCHEMES, formToInput, type CampaignForm } from '@/lib/campaign';
+import {
+  COUNTRY,
+  SCHEMES,
+  describeDiscount,
+  formToInput,
+  pickDiscount,
+  type CampaignForm,
+  type VariantForm,
+} from '@/lib/campaign';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import type { Campaign, Merchant, Partner, Terminal } from '@/lib/types';
 import type { MessageKey } from '@/messages/en';
+import { DiscountEditor } from './DiscountEditor';
 import { Button, Card, ErrorBox, Field, Select } from './ui';
 
 const STEPS: MessageKey[] = [
@@ -17,6 +26,7 @@ const STEPS: MessageKey[] = [
   'wizard.stepLimits',
   'wizard.stepFunding',
   'wizard.stepSchedule',
+  'wizard.stepExperiment',
   'wizard.stepReview',
 ];
 
@@ -188,109 +198,11 @@ export function CampaignWizard({ initial, campaign }: Props) {
         )}
 
         {step === 1 && (
-          <div className="space-y-4">
-            <Field label={t('wizard.discountType')}>
-              <div className="flex flex-wrap gap-2">
-                {(['PERCENT', 'FIXED', 'TIERED'] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => set('discountType', type)}
-                    className={`rounded-lg border px-4 py-2 text-sm ${form.discountType === type ? 'border-brand bg-brand-50 text-brand-600' : 'border-line bg-white'}`}
-                  >
-                    {t(`wizard.type.${type}`)}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            {form.discountType === 'PERCENT' && (
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label={t('wizard.percent')}>
-                  <input
-                    className="input ltr"
-                    inputMode="decimal"
-                    value={form.percent}
-                    onChange={(e) => set('percent', e.target.value)}
-                  />
-                </Field>
-                {money('wizard.maxDiscount', 'maxDiscount')}
-                {money('wizard.minSpend', 'minSpend')}
-              </div>
-            )}
-            {form.discountType === 'FIXED' && (
-              <div className="grid gap-4 md:grid-cols-3">
-                <Field label={`${t('wizard.fixedAmount')} (${currency})`}>
-                  <input
-                    className="input ltr"
-                    inputMode="decimal"
-                    value={form.fixedAmount}
-                    onChange={(e) => set('fixedAmount', e.target.value)}
-                  />
-                </Field>
-                {money('wizard.minSpend', 'minSpend')}
-              </div>
-            )}
-            {form.discountType === 'TIERED' && (
-              <div className="space-y-3">
-                <p className="text-xs text-ink-muted">{t('wizard.tierHint')}</p>
-                {form.tiers.map((tier, i) => (
-                  <div key={i} className="grid items-end gap-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-                    {(['minSpend', 'percent', 'maxDiscount', 'amount'] as const).map((k) => (
-                      <Field
-                        key={k}
-                        label={
-                          k === 'minSpend'
-                            ? `${t('wizard.tierMinSpend')} (${currency})`
-                            : k === 'percent'
-                              ? t('wizard.tierPercent')
-                              : k === 'maxDiscount'
-                                ? `${t('wizard.maxDiscount')} (${currency})`
-                                : `${t('wizard.tierFixed')} (${currency})`
-                        }
-                      >
-                        <input
-                          className="input ltr"
-                          inputMode="decimal"
-                          value={tier[k]}
-                          onChange={(e) =>
-                            set(
-                              'tiers',
-                              form.tiers.map((x, j) =>
-                                j === i ? { ...x, [k]: e.target.value } : x,
-                              ),
-                            )
-                          }
-                        />
-                      </Field>
-                    ))}
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        set(
-                          'tiers',
-                          form.tiers.filter((_, j) => j !== i),
-                        )
-                      }
-                      disabled={form.tiers.length === 1}
-                    >
-                      {t('common.remove')}
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    set('tiers', [
-                      ...form.tiers,
-                      { minSpend: '', percent: '', amount: '', maxDiscount: '' },
-                    ])
-                  }
-                >
-                  + {t('wizard.addTier')}
-                </Button>
-              </div>
-            )}
-          </div>
+          <DiscountEditor
+            value={pickDiscount(form)}
+            onChange={(d) => setForm((f) => ({ ...f, ...d }))}
+            currency={currency}
+          />
         )}
 
         {step === 2 && (
@@ -650,6 +562,10 @@ export function CampaignWizard({ initial, campaign }: Props) {
         )}
 
         {step === 6 && (
+          <ExperimentStep form={form} setForm={setForm} live={live} currency={currency} />
+        )}
+
+        {step === 7 && (
           <Review
             form={form}
             partners={partners.data?.items ?? []}
@@ -695,6 +611,208 @@ export function CampaignWizard({ initial, campaign }: Props) {
   );
 }
 
+const EVEN_SPLIT: Record<number, string[]> = { 2: ['50', '50'], 3: ['34', '33', '33'] };
+
+function ExperimentStep({
+  form,
+  setForm,
+  live,
+  currency,
+}: {
+  form: CampaignForm;
+  setForm: (fn: (f: CampaignForm) => CampaignForm) => void;
+  live: boolean;
+  currency: string;
+}) {
+  const { t } = useI18n();
+  const holdout = Number(form.holdoutPct) || 0;
+  const weightTotal =
+    (Number(form.variantAWeight) || 0) +
+    form.variants.reduce((sum, v) => sum + (Number(v.weight) || 0), 0);
+  /** Resets the weights to an even split for the given variants. */
+  const withVariants = (f: CampaignForm, variants: VariantForm[]): CampaignForm => {
+    const split = EVEN_SPLIT[variants.length + 1] ?? [];
+    return {
+      ...f,
+      variantAWeight: split[0] ?? '100',
+      variants: variants.map((v, i) => ({ ...v, weight: split[i + 1] ?? v.weight })),
+    };
+  };
+  const newVariant = (f: CampaignForm, key: 'B' | 'C'): VariantForm => ({
+    key,
+    name: key,
+    weight: '0',
+    // Start from the control's discount so the difference is the one thing the user changes.
+    fields: { ...pickDiscount(f), tiers: f.tiers.map((x) => ({ ...x })) },
+  });
+  const updateVariant = (key: 'B' | 'C', patch: Partial<VariantForm>) =>
+    setForm((f) => ({
+      ...f,
+      variants: f.variants.map((v) => (v.key === key ? { ...v, ...patch } : v)),
+    }));
+
+  return (
+    <div className="space-y-6">
+      {live && (
+        <p className="rounded-lg border border-warn/20 bg-warn-bg px-4 py-3 text-sm text-warn">
+          {t('wizard.experimentLiveNote')}
+        </p>
+      )}
+      <div>
+        <label className="label" htmlFor="holdout">
+          {t('wizard.holdout')}
+        </label>
+        <p className="mb-3 text-xs text-ink-faint">{t('wizard.holdoutHint')}</p>
+        <div className="flex items-center gap-4">
+          <input
+            id="holdout"
+            type="range"
+            min={0}
+            max={20}
+            step={1}
+            className="w-64 accent-brand"
+            value={holdout}
+            onChange={(e) => setForm((f) => ({ ...f, holdoutPct: e.target.value }))}
+          />
+          <input
+            className="input ltr w-20"
+            inputMode="decimal"
+            aria-label={t('wizard.holdout')}
+            value={form.holdoutPct}
+            onChange={(e) => setForm((f) => ({ ...f, holdoutPct: e.target.value }))}
+          />
+          <span className="text-sm text-ink-muted">%</span>
+        </div>
+        {holdout === 0 && <p className="mt-2 text-xs text-ink-muted">{t('wizard.holdoutNone')}</p>}
+      </div>
+
+      <div className="border-t border-line pt-6">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            className="accent-brand"
+            checked={form.abTest}
+            onChange={(e) =>
+              setForm((f) =>
+                e.target.checked
+                  ? withVariants(
+                      { ...f, abTest: true },
+                      f.variants.length ? f.variants : [newVariant(f, 'B')],
+                    )
+                  : { ...f, abTest: false },
+              )
+            }
+          />
+          {t('wizard.abTest')}
+        </label>
+        <p className="mt-1 text-xs text-ink-faint">{t('wizard.abTestHint')}</p>
+      </div>
+
+      {form.abTest && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-line p-4">
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <span className="rounded bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-600">
+                A
+              </span>
+              <Field label={t('wizard.variantName')}>
+                <input
+                  className="input"
+                  value={form.variantAName}
+                  onChange={(e) => setForm((f) => ({ ...f, variantAName: e.target.value }))}
+                />
+              </Field>
+              <Field label={t('wizard.variantWeight')}>
+                <input
+                  className="input ltr w-24"
+                  inputMode="decimal"
+                  value={form.variantAWeight}
+                  onChange={(e) => setForm((f) => ({ ...f, variantAWeight: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <p className="text-xs text-ink-muted">{t('wizard.variantAHint')}</p>
+          </div>
+          {form.variants.map((v) => (
+            <div key={v.key} className="rounded-lg border border-line p-4" data-variant={v.key}>
+              <div className="mb-4 flex flex-wrap items-end gap-3">
+                <span className="rounded bg-canvas px-2 py-1 text-xs font-semibold ring-1 ring-line">
+                  {v.key}
+                </span>
+                <Field label={t('wizard.variantName')}>
+                  <input
+                    className="input"
+                    value={v.name}
+                    onChange={(e) => updateVariant(v.key, { name: e.target.value })}
+                  />
+                </Field>
+                <Field label={t('wizard.variantWeight')}>
+                  <input
+                    className="input ltr w-24"
+                    inputMode="decimal"
+                    value={v.weight}
+                    onChange={(e) => updateVariant(v.key, { weight: e.target.value })}
+                  />
+                </Field>
+                {form.variants.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    onClick={() =>
+                      setForm((f) =>
+                        withVariants(
+                          f,
+                          f.variants
+                            .filter((x) => x.key !== v.key)
+                            .map((x, i) => ({ ...x, key: i === 0 ? 'B' : 'C' })),
+                        ),
+                      )
+                    }
+                  >
+                    {t('common.remove')}
+                  </Button>
+                )}
+              </div>
+              <DiscountEditor
+                idPrefix={`variant-${v.key}`}
+                value={v.fields}
+                onChange={(fields) => updateVariant(v.key, { fields })}
+                currency={currency}
+              />
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex gap-2">
+              {form.variants.length < 2 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    setForm((f) => withVariants(f, [...f.variants, newVariant(f, 'C')]))
+                  }
+                >
+                  + {t('wizard.addVariant')}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setForm((f) => withVariants(f, f.variants))}
+              >
+                {t('wizard.splitEvenly')}
+              </Button>
+            </div>
+            <span
+              className={`text-sm font-medium ${Math.abs(weightTotal - 100) < 0.001 ? 'text-ok' : 'text-bad'}`}
+            >
+              {t('wizard.shareTotal', { total: weightTotal })}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Review({
   form,
   partners,
@@ -713,18 +831,9 @@ function Review({
     v === null || v === undefined ? t('common.unlimited') : formatMoney(v, cur, locale);
   const n = (v: number | null | undefined) =>
     v === null || v === undefined ? t('common.unlimited') : String(v);
-  const d = input.discount;
-  const discount =
-    d.type === 'PERCENT'
-      ? `${d.percentBps / 100}%${d.maxDiscountMinor ? ` · max ${m(d.maxDiscountMinor)}` : ''}${d.minSpendMinor ? ` · min ${m(d.minSpendMinor)}` : ''}`
-      : d.type === 'FIXED'
-        ? `${m(d.amountMinor)}${d.minSpendMinor ? ` · min ${m(d.minSpendMinor)}` : ''}`
-        : d.tiers
-            .map(
-              (tier) =>
-                `≥ ${m(tier.minSpendMinor)}: ${'percentBps' in tier ? `${tier.percentBps / 100}%` : m(tier.amountMinor)}`,
-            )
-            .join(' · ');
+  const money = (v: number) => formatMoney(v, cur, locale);
+  const discount = describeDiscount(input.discount, money);
+  const variants = input.variants ?? [];
   const rows: Array<[MessageKey, string]> = [
     ['common.name', input.name || '—'],
     ['common.country', `${t(`country.${input.country}`)} · ${cur}`],
@@ -772,6 +881,18 @@ function Review({
             `${w.daysOfWeek.map((x) => t(`day.${x}` as MessageKey)).join(' ')} ${Math.floor(w.startMinute / 60)}:${String(w.startMinute % 60).padStart(2, '0')}–${Math.floor(w.endMinute / 60)}:${String(w.endMinute % 60).padStart(2, '0')}`,
         )
         .join(' | ') ?? t('common.all'),
+    ],
+    ['wizard.holdout', `${(input.holdoutBps ?? 0) / 100}%`],
+    [
+      'wizard.variants',
+      variants.length
+        ? variants
+            .map(
+              (v) =>
+                `${v.key} “${v.name}” ${v.weightBps / 100}%: ${describeDiscount(v.discount, money)}`,
+            )
+            .join(' | ')
+        : t('wizard.noAbTest'),
     ],
   ];
   return (

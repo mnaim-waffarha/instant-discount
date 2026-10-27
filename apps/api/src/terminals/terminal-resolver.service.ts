@@ -5,6 +5,8 @@ import { PrismaService } from '../infra/prisma.service';
 export interface ResolvedTerminal {
   id: string;
   merchantId: string;
+  /** The merchant's partner (for funding, settlement and experiment reports). */
+  merchantPartnerId: string;
   branchId?: string;
   mcc: string;
   country: Country;
@@ -34,6 +36,7 @@ export class TerminalResolver {
     const value: ResolvedTerminal | null = row && {
       id: row.id,
       merchantId: row.merchantId,
+      merchantPartnerId: row.merchant.partnerId,
       branchId: row.branchId ?? undefined,
       mcc: row.mcc ?? row.merchant.mcc,
       country: row.merchant.country,

@@ -222,6 +222,10 @@ model Campaign {
   settlementMode   SettlementMode @default(WAFFARHA_COLLECTS)
   // Pause automatically when a fraud alert points at this campaign.
   autoPauseOnFraud Boolean        @default(false)
+  // Share of eligible cards (bps) deliberately left without the discount, to measure uplift.
+  holdoutBps       Int            @default(0)
+  // Randomises experiment assignment per campaign (a clone gets a new one).
+  experimentSalt   String         @default(uuid())
 
   createdById     String?
   updatedById     String?
@@ -241,6 +245,7 @@ model Campaign {
   fundings    CampaignFunding[]
   versions    CampaignVersion[]
   redemptions Redemption[]
+  variants    CampaignVariant[]
 
   @@index([status, country, startAt, endAt])
 }
@@ -296,6 +301,8 @@ model Redemption {
   // Period bucket keys used for the Redis counters, needed to release them exactly.
   counterKeys           Json
   status                RedemptionStatus @default(RESERVED)
+  // A/B variant the card was assigned to (null when the campaign has no variants).
+  variantKey            String?
   authCode              String?
   expiresAt             DateTime
   confirmedAt           DateTime?
@@ -553,4 +560,37 @@ model Setting {
   value     Json
   updatedBy String?
   updatedAt DateTime @updatedAt
+}
+
+// A/B variant of a campaign's discount. Variant A is the control and mirrors Campaign.discountConfig.
+model CampaignVariant {
+  id             String       @id @default(uuid())
+  campaignId     String
+  campaign       Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  key            String
+  name           String
+  // Share of non-holdout cards, in bps; a campaign's variants sum to 10000.
+  weightBps      Int
+  discountType   DiscountType
+  discountConfig Json
+
+  @@unique([campaignId, key])
+}
+
+// One row per inquiry per campaign the card was eligible for, with its experiment group.
+// Written off the payment path; the basis for uplift and A/B reports.
+model CampaignExposure {
+  id                String   @id @default(uuid())
+  campaignId        String
+  // HOLDOUT, or the variant key (A when the campaign has no variants).
+  group             String
+  cardTokenHash     String
+  amountMinor       BigInt
+  currency          Currency
+  merchantPartnerId String
+  redemptionId      String?
+  createdAt         DateTime @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([campaignId, group, cardTokenHash])
 }

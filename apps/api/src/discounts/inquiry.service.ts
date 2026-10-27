@@ -1,6 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@instant-discount/db';
-import { rankCampaigns, type TransactionContext } from '@instant-discount/rules-engine';
+import {
+  HOLDOUT,
+  assignGroup,
+  rankCampaigns,
+  type TransactionContext,
+} from '@instant-discount/rules-engine';
 import { splitByShares } from '@instant-discount/shared';
 import type { AuthenticatedAcquirer } from '../acquirers/acquirers.service';
 import { CampaignCache, type ActiveCampaign } from '../campaigns/campaign-cache.service';
@@ -21,6 +26,8 @@ interface Decision {
   campaignId?: string;
   /** Per-campaign rejection reasons, for the inquiry log. */
   details?: Record<string, string>;
+  /** The experiment group of the first campaign the card was eligible for (intent to treat). */
+  exposure?: { campaignId: string; group: string; merchantPartnerId: string };
 }
 
 const VELOCITY_WINDOW_MS = 3_600_000;
@@ -96,16 +103,32 @@ export class InquiryService {
       mcc: terminal.mcc,
     };
     const candidates = this.cache.forCountry(terminal.country);
-    const ranked = rankCampaigns(
-      candidates.map((c) => c.rule),
-      txn,
-      now,
-    );
+    // Each campaign evaluates the card with the discount of its experiment group.
+    const groups = new Map<string, string>();
+    const rules = candidates.map((c) => {
+      const group = assignGroup(c.experiment, cardHash);
+      groups.set(c.rule.id, group);
+      const variant = c.experiment.variants.find((v) => v.key === group);
+      return variant ? { ...c.rule, discount: variant.discount } : c.rule;
+    });
+    const ranked = rankCampaigns(rules, txn, now);
     const details: Record<string, string> = Object.fromEntries(
       ranked.rejected.map((r) => [r.campaignId, r.reason]),
     );
-    if (ranked.eligible.length === 0)
-      return notEligible('NO_ELIGIBLE_CAMPAIGN', { terminalId: terminal.id, details });
+    const top = ranked.eligible[0];
+    const exposure = top && {
+      campaignId: top.campaignId,
+      group: groups.get(top.campaignId)!,
+      merchantPartnerId: terminal.merchantPartnerId,
+    };
+    // Holdout cards do not get that campaign; they may still fall through to another one.
+    ranked.eligible = ranked.eligible.filter((e) => {
+      if (groups.get(e.campaignId) !== HOLDOUT) return true;
+      details[e.campaignId] = HOLDOUT;
+      return false;
+    });
+    const base = { terminalId: terminal.id, details, exposure };
+    if (ranked.eligible.length === 0) return notEligible('NO_ELIGIBLE_CAMPAIGN', base);
 
     // Guardrail against misconfigured campaigns: no single discount above the per-currency cap.
     const cap = safety.maxDiscountPerTxnMinor[req.currency];
@@ -120,7 +143,7 @@ export class InquiryService {
       if (used === 1) await this.redis.client.pexpire(velocityKey, VELOCITY_WINDOW_MS * 2);
       if (used > maxGrants) {
         await this.redis.client.decr(velocityKey);
-        return notEligible('VELOCITY_LIMIT', { terminalId: terminal.id, details });
+        return notEligible('VELOCITY_LIMIT', base);
       }
     }
     const releaseVelocity = () =>
@@ -156,6 +179,7 @@ export class InquiryService {
           buckets,
           candidate.discountMinor,
           now,
+          campaign.experiment.variants.length ? groups.get(campaign.rule.id) : undefined,
         );
         return {
           response: {
@@ -170,9 +194,8 @@ export class InquiryService {
             display_message: campaign.displayMessage,
             display_message_ar: campaign.displayMessageAr,
           },
-          terminalId: terminal.id,
+          ...base,
           campaignId: campaign.rule.id,
-          details,
         };
       } catch (err) {
         // Give the reservation back before deciding what to answer.
@@ -192,7 +215,7 @@ export class InquiryService {
     }
 
     await releaseVelocity();
-    return notEligible('LIMITS_REACHED', { terminalId: terminal.id, details });
+    return notEligible('LIMITS_REACHED', base);
   }
 
   private createRedemption(
@@ -205,6 +228,7 @@ export class InquiryService {
     buckets: ReturnType<typeof bucketsFor>,
     discountMinor: number,
     now: Date,
+    variantKey?: string,
   ) {
     const shares = splitByShares(
       discountMinor,
@@ -218,6 +242,7 @@ export class InquiryService {
         acquirerTxnRef: req.acquirer_txn_ref,
         campaignId: campaign.rule.id,
         campaignVersion: campaign.rule.version,
+        variantKey,
         terminalId,
         cardTokenHash: cardHash,
         bin: req.bin,
@@ -292,5 +317,22 @@ export class InquiryService {
         },
       })
       .catch((err) => this.logger.warn(`Could not write inquiry log: ${String(err)}`));
+
+    if (d.exposure) {
+      const grantedHere = r.eligible && r.campaign_id === d.exposure.campaignId;
+      void this.prisma.campaignExposure
+        .create({
+          data: {
+            campaignId: d.exposure.campaignId,
+            group: d.exposure.group,
+            cardTokenHash: cardHash,
+            amountMinor: req.amount,
+            currency: req.currency,
+            merchantPartnerId: d.exposure.merchantPartnerId,
+            redemptionId: grantedHere ? r.redemption_id : undefined,
+          },
+        })
+        .catch((err) => this.logger.warn(`Could not write exposure: ${String(err)}`));
+    }
   }
 }

@@ -9,6 +9,7 @@ import { Roles } from '../admin/auth/roles';
 import { pageQuery, toPage } from '../admin/common/pagination';
 import { PrismaService } from '../infra/prisma.service';
 import { sendDocument } from './settlement.controller';
+import { PerformanceService } from '../reports/performance.service';
 import { SettlementService } from './settlement.service';
 
 const VISIBLE_DOCS = ['ISSUED', 'OVERDUE', 'PAID'] as const;
@@ -43,7 +44,19 @@ export class PortalController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlement: SettlementService,
+    private readonly performance: PerformanceService,
   ) {}
+
+  /** Funders see the whole campaign; a merchant that does not fund it sees only its own terminals. */
+  @Get('campaigns/:id/performance')
+  async campaignPerformance(@CurrentUser() user: User, @Param('id') id: string) {
+    const partnerId = user.partnerId!;
+    await this.assertVisible(partnerId, id);
+    const funds = await this.prisma.campaignFunding.findFirst({
+      where: { campaignId: id, partnerId },
+    });
+    return this.performance.report(id, funds ? {} : { merchantPartnerId: partnerId });
+  }
 
   @Get('me')
   async me(@CurrentUser() user: User) {

@@ -48,8 +48,27 @@ export const campaignInput = z
       .min(1),
     settlementMode: z.enum(['WAFFARHA_COLLECTS', 'DIRECT']).default('WAFFARHA_COLLECTS'),
     autoPauseOnFraud: z.boolean().default(false),
+    /** Share of eligible cards kept without the discount to measure uplift (max 20%). */
+    holdoutBps: z.number().int().min(0).max(2_000).default(0),
+    /** A/B variants; empty = no test. Variant A is the control and becomes the campaign discount. */
+    variants: z
+      .array(
+        z.object({
+          key: z.enum(['A', 'B', 'C']),
+          name: z.string().min(1).max(60),
+          weightBps: z.number().int().min(1).max(10_000),
+          discount: discountConfigSchema,
+        }),
+      )
+      .max(3)
+      .default([]),
   })
-  .transform((c) => ({ ...c, timezone: c.timezone ?? COUNTRY_DEFAULTS[c.country].timezone }));
+  .transform((c) => ({
+    ...c,
+    timezone: c.timezone ?? COUNTRY_DEFAULTS[c.country].timezone,
+    // With an A/B test the campaign's own discount is the control variant's.
+    discount: c.variants.find((v) => v.key === 'A')?.discount ?? c.discount,
+  }));
 
 export type CampaignInput = z.infer<typeof campaignInput>;
 
@@ -123,6 +142,23 @@ export async function validateCampaign(prisma: PrismaService, c: CampaignInput):
     }
   }
 
+  if (c.variants.length) {
+    const keys = c.variants.map((v) => v.key);
+    if (c.variants.length < 2) problems.push('an A/B test needs at least two variants');
+    if (new Set(keys).size !== keys.length) problems.push('variant keys must be unique');
+    if (!keys.includes('A')) problems.push('variant A (the control) is required');
+    const weights = c.variants.reduce((sum, v) => sum + v.weightBps, 0);
+    if (weights !== 10_000)
+      problems.push(`variant weights must sum to 10000 bps (100%), got ${weights}`);
+    for (const v of c.variants) {
+      if (v.discount.type === 'TIERED') {
+        const mins = v.discount.tiers.map((t) => t.minSpendMinor);
+        if (new Set(mins).size !== mins.length)
+          problems.push(`variant ${v.key}: tiers must have distinct minSpendMinor values`);
+      }
+    }
+  }
+
   if (problems.length) throw unprocessable('INVALID_CAMPAIGN', problems.join('; '));
 }
 
@@ -155,5 +191,17 @@ export function toCampaignColumns(c: CampaignInput) {
     perCardPeriod: l.perCardPeriod,
     settlementMode: c.settlementMode,
     autoPauseOnFraud: c.autoPauseOnFraud,
+    holdoutBps: c.holdoutBps,
   };
+}
+
+/** Nested create for a campaign's variants. */
+export function variantRows(c: CampaignInput) {
+  return c.variants.map((v) => ({
+    key: v.key,
+    name: v.name,
+    weightBps: v.weightBps,
+    discountType: v.discount.type,
+    discountConfig: v.discount as Prisma.InputJsonValue,
+  }));
 }

@@ -6,7 +6,11 @@ import {
   type CampaignStatus,
   type User,
 } from '@instant-discount/db';
-import { CAMPAIGNS_CHANGED_CHANNEL } from '../../campaigns/campaign-cache.service';
+import {
+  CAMPAIGN_INCLUDE,
+  CAMPAIGNS_CHANGED_CHANNEL,
+  type CampaignWithRelations,
+} from '../../campaigns/campaign-cache.service';
 import { ApiError, conflict, notFound, unprocessable } from '../../common/api-error';
 import { PrismaService } from '../../infra/prisma.service';
 import { RedisService } from '../../infra/redis.service';
@@ -15,10 +19,11 @@ import {
   campaignInput,
   toCampaignColumns,
   validateCampaign,
+  variantRows,
   type CampaignInput,
 } from './campaign-input';
 
-type CampaignWithFundings = Campaign & { fundings: CampaignFunding[] };
+type CampaignWithFundings = CampaignWithRelations;
 
 const LIVE: CampaignStatus[] = ['SCHEDULED', 'ACTIVE', 'PAUSED'];
 
@@ -52,6 +57,13 @@ export function toCampaignInput(c: CampaignWithFundings): CampaignInput {
     fundings: c.fundings.map((f) => ({ partnerId: f.partnerId, shareBps: f.shareBps })),
     settlementMode: c.settlementMode,
     autoPauseOnFraud: c.autoPauseOnFraud,
+    holdoutBps: c.holdoutBps,
+    variants: c.variants.map((v) => ({
+      key: v.key,
+      name: v.name,
+      weightBps: v.weightBps,
+      discount: v.discountConfig,
+    })),
   });
 }
 
@@ -71,7 +83,7 @@ export class CampaignsService {
   ) {}
 
   async get(id: string): Promise<CampaignWithFundings> {
-    const c = await this.prisma.campaign.findUnique({ where: { id }, include: { fundings: true } });
+    const c = await this.prisma.campaign.findUnique({ where: { id }, include: CAMPAIGN_INCLUDE });
     if (!c) throw notFound('CAMPAIGN_NOT_FOUND', 'No such campaign');
     return c;
   }
@@ -85,8 +97,9 @@ export class CampaignsService {
         createdById: user.id,
         updatedById: user.id,
         fundings: { create: input.fundings },
+        variants: { create: variantRows(input) },
       },
-      include: { fundings: true },
+      include: CAMPAIGN_INCLUDE,
     });
     await this.audit.record(user, 'campaign.create', 'Campaign', c.id, undefined, c);
     return c;
@@ -99,6 +112,7 @@ export class CampaignsService {
     if (c.status === 'DRAFT') {
       const updated = await this.prisma.$transaction(async (tx) => {
         await tx.campaignFunding.deleteMany({ where: { campaignId: id } });
+        await tx.campaignVariant.deleteMany({ where: { campaignId: id } });
         return tx.campaign.update({
           where: { id },
           data: {
@@ -106,8 +120,9 @@ export class CampaignsService {
             updatedById: user.id,
             rejectionReason: null,
             fundings: { create: input.fundings },
+            variants: { create: variantRows(input) },
           },
-          include: { fundings: true },
+          include: CAMPAIGN_INCLUDE,
         });
       });
       await this.audit.record(user, 'campaign.update', 'Campaign', id, c, updated);
@@ -124,7 +139,7 @@ export class CampaignsService {
           pendingAt: new Date(),
           rejectionReason: null,
         },
-        include: { fundings: true },
+        include: CAMPAIGN_INCLUDE,
       });
       await this.audit.record(user, 'campaign.propose_change', 'Campaign', id, undefined, input);
       return updated;
@@ -172,7 +187,7 @@ export class CampaignsService {
         const updated = await tx.campaign.update({
           where: { id },
           data: { status, approvedById: user.id, approvedAt: new Date() },
-          include: { fundings: true },
+          include: CAMPAIGN_INCLUDE,
         });
         await tx.campaignVersion.create({
           data: { campaignId: id, version: updated.version, snapshot: snapshot(updated) },
@@ -190,6 +205,7 @@ export class CampaignsService {
       this.checkLiveChange(c, input);
       const approved = await this.prisma.$transaction(async (tx) => {
         await tx.campaignFunding.deleteMany({ where: { campaignId: id } });
+        await tx.campaignVariant.deleteMany({ where: { campaignId: id } });
         const updated = await tx.campaign.update({
           where: { id },
           data: {
@@ -202,8 +218,9 @@ export class CampaignsService {
             pendingById: null,
             pendingAt: null,
             fundings: { create: input.fundings },
+            variants: { create: variantRows(input) },
           },
-          include: { fundings: true },
+          include: CAMPAIGN_INCLUDE,
         });
         await tx.campaignVersion.create({
           data: { campaignId: id, version: updated.version, snapshot: snapshot(updated) },
@@ -293,7 +310,7 @@ export class CampaignsService {
     const after = await this.prisma.campaign.update({
       where: { id: before.id },
       data,
-      include: { fundings: true },
+      include: CAMPAIGN_INCLUDE,
     });
     await this.afterChange(user, action, before, after);
     return after;

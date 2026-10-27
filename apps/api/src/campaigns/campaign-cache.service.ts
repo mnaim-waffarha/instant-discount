@@ -1,10 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import type { Campaign, CampaignFunding } from '@instant-discount/db';
+import type { Campaign, CampaignFunding, CampaignVariant } from '@instant-discount/db';
 import {
   discountConfigSchema,
   scheduleSchema,
   targetingSchema,
   type CampaignRule,
+  type ExperimentConfig,
   type LimitPeriod,
 } from '@instant-discount/rules-engine';
 import type { Country } from '@instant-discount/shared';
@@ -32,11 +33,20 @@ export interface ActiveCampaign {
   fundings: Array<{ partnerId: string; shareBps: number }>;
   displayMessage: string | null;
   displayMessageAr: string | null;
+  /** Holdout and A/B variants; variants are empty when the campaign runs no A/B test. */
+  experiment: ExperimentConfig;
 }
+
+/** Relations every campaign read needs. */
+export const CAMPAIGN_INCLUDE = { fundings: true, variants: { orderBy: { key: 'asc' as const } } };
+export type CampaignWithRelations = Campaign & {
+  fundings: CampaignFunding[];
+  variants: CampaignVariant[];
+};
 
 const toNum = (v: bigint | number | null) => (v === null ? null : Number(v));
 
-export function toActiveCampaign(c: Campaign & { fundings: CampaignFunding[] }): ActiveCampaign {
+export function toActiveCampaign(c: CampaignWithRelations): ActiveCampaign {
   return {
     rule: {
       id: c.id,
@@ -66,6 +76,16 @@ export function toActiveCampaign(c: Campaign & { fundings: CampaignFunding[] }):
       .sort((a, b) => b.shareBps - a.shareBps),
     displayMessage: c.displayMessage,
     displayMessageAr: c.displayMessageAr,
+    experiment: {
+      campaignId: c.id,
+      salt: c.experimentSalt,
+      holdoutBps: c.holdoutBps,
+      variants: c.variants.map((v) => ({
+        key: v.key,
+        weightBps: v.weightBps,
+        discount: discountConfigSchema.parse(v.discountConfig),
+      })),
+    },
   };
 }
 
@@ -112,7 +132,7 @@ export class CampaignCache implements OnModuleInit, OnModuleDestroy {
     try {
       const rows = await this.prisma.campaign.findMany({
         where: { status: 'ACTIVE', endAt: { gt: new Date() } },
-        include: { fundings: true },
+        include: CAMPAIGN_INCLUDE,
       });
       const byCountry = new Map<Country, ActiveCampaign[]>();
       const byId = new Map<string, ActiveCampaign>();

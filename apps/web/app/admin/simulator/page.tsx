@@ -33,6 +33,9 @@ interface SimResult {
     discountMinor: number | null;
     finalAmountMinor: number | null;
     cappedBy: string | null;
+    /** Only when a card token was given: the card's experiment group in this campaign. */
+    group?: string | null;
+    heldOut?: boolean;
     headroom: {
       budgetMinor: number | null;
       uniqueCards: number | null;
@@ -51,6 +54,7 @@ export default function SimulatorPage() {
   const [amount, setAmount] = useState('500');
   const [at, setAt] = useState('');
   const [includeInactive, setIncludeInactive] = useState(true);
+  const [cardToken, setCardToken] = useState('');
   const [result, setResult] = useState<SimResult>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -68,6 +72,7 @@ export default function SimulatorPage() {
             scheme,
             amountMinor: toMinor(amount),
             includeInactive,
+            cardToken: cardToken.trim() || undefined,
             at: at ? zonedToUtc(at, tz).toISOString() : undefined,
           },
         }),
@@ -138,6 +143,14 @@ export default function SimulatorPage() {
                 onChange={(e) => setAt(e.target.value)}
               />
             </Field>
+            <Field label={t('sim.cardToken')} hint={t('sim.cardTokenHint')}>
+              <input
+                className="input ltr"
+                minLength={8}
+                value={cardToken}
+                onChange={(e) => setCardToken(e.target.value)}
+              />
+            </Field>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -203,10 +216,24 @@ export default function SimulatorPage() {
                     },
                     { key: 'priority', header: t('campaigns.priority'), cell: (r) => r.priority },
                     {
+                      key: 'group',
+                      header: t('sim.group'),
+                      cell: (r) =>
+                        r.group ? (
+                          <span className="ltr">
+                            {r.group === 'HOLDOUT' ? t('perf.group.HOLDOUT') : r.group}
+                          </span>
+                        ) : (
+                          '—'
+                        ),
+                    },
+                    {
                       key: 'verdict',
                       header: t('common.reason'),
                       cell: (r) =>
-                        r.eligible ? (
+                        r.eligible && r.heldOut ? (
+                          <Badge>{t('sim.heldOut')}</Badge>
+                        ) : r.eligible ? (
                           r.cappedBy ? (
                             <Badge tone="warn">
                               {t('sim.cappedBy')}: {t(`reason.${r.cappedBy}` as MessageKey)}
