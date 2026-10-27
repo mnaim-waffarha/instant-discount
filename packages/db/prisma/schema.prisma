@@ -1,0 +1,376 @@
+// Instant Discount — core schema.
+// Money is always integer minor units (BigInt), percentages are basis points.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Country {
+  EG
+  SA
+}
+
+enum Currency {
+  EGP
+  SAR
+}
+
+enum CardScheme {
+  VISA
+  MASTERCARD
+  MEEZA
+  MADA
+  AMEX
+}
+
+enum PartnerType {
+  BANK
+  MERCHANT
+  WAFFARHA
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+  TIERED
+}
+
+enum LimitPeriod {
+  DAY
+  WEEK
+  CAMPAIGN
+}
+
+enum RedemptionStatus {
+  RESERVED
+  CONFIRMED
+  RELEASED
+  EXPIRED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum RedemptionEventType {
+  RESERVED
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum UserRole {
+  ADMIN
+  CAMPAIGN_MANAGER
+  APPROVER
+  FINANCE
+  VIEWER
+  PARTNER_USER
+}
+
+model Partner {
+  id           String      @id @default(uuid())
+  name         String
+  nameAr       String?
+  type         PartnerType
+  country      Country
+  taxNumber    String?
+  billingEmail String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  merchants Merchant[]
+  fundings  CampaignFunding[]
+  invoices  Invoice[]
+  users     User[]
+}
+
+model Merchant {
+  id        String   @id @default(uuid())
+  // A merchant is always backed by a MERCHANT partner (for funding and invoicing).
+  partnerId String
+  partner   Partner  @relation(fields: [partnerId], references: [id])
+  name      String
+  nameAr    String?
+  country   Country
+  mcc       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches  Branch[]
+  terminals Terminal[]
+}
+
+model Branch {
+  id         String   @id @default(uuid())
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id])
+  name       String
+  city       String?
+  createdAt  DateTime @default(now())
+
+  terminals Terminal[]
+}
+
+model Terminal {
+  id                 String   @id @default(uuid())
+  acquirerId         String
+  acquirer           Acquirer @relation(fields: [acquirerId], references: [id])
+  // Terminal id as known by the acquirer (TID).
+  externalTerminalId String
+  merchantId         String
+  merchant           Merchant @relation(fields: [merchantId], references: [id])
+  branchId           String?
+  branch             Branch?  @relation(fields: [branchId], references: [id])
+  // Overrides the merchant MCC when set.
+  mcc                String?
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  redemptions Redemption[]
+
+  @@unique([acquirerId, externalTerminalId])
+}
+
+model Acquirer {
+  id              String   @id @default(uuid())
+  name            String
+  country         Country
+  apiKeyId        String   @unique
+  // Encrypted at rest by the application (KMS/vault), never returned by the API.
+  hmacSecretEnc   String
+  certFingerprint String?
+  ipAllowlist     String[]
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  terminals   Terminal[]
+  redemptions Redemption[]
+}
+
+model Campaign {
+  id               String         @id @default(uuid())
+  name             String
+  nameAr           String?
+  description      String?
+  status           CampaignStatus @default(DRAFT)
+  version          Int            @default(1)
+  priority         Int            @default(0)
+  country          Country
+  currency         Currency
+  timezone         String
+  startAt          DateTime
+  endAt            DateTime
+  discountType     DiscountType
+  // Matches rules-engine DiscountConfig.
+  discountConfig   Json
+  // Matches rules-engine Targeting.
+  targeting        Json
+  // Matches rules-engine ScheduleWindow[]; null = always.
+  schedule         Json?
+  displayMessage   String?
+  displayMessageAr String?
+
+  // Limits — null means unlimited.
+  totalBudgetMinor      BigInt?
+  maxUniqueCards        Int?
+  dailyBudgetMinor      BigInt?
+  dailyRedemptionLimit  Int?
+  perCardMaxCount       Int?
+  perCardMaxAmountMinor BigInt?
+  perCardPeriod         LimitPeriod?
+
+  createdById  String?
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  fundings    CampaignFunding[]
+  versions    CampaignVersion[]
+  redemptions Redemption[]
+
+  @@index([status, country, startAt, endAt])
+}
+
+// Immutable snapshot of each approved version; redemptions reference the version they ran under.
+model CampaignVersion {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  version    Int
+  snapshot   Json
+  createdAt  DateTime @default(now())
+
+  @@unique([campaignId, version])
+}
+
+model CampaignFunding {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id])
+  // Share of each discount in bps; all shares of a campaign sum to 10000.
+  shareBps   Int
+
+  @@unique([campaignId, partnerId])
+}
+
+model Redemption {
+  id                    String           @id @default(uuid())
+  acquirerId            String
+  acquirer              Acquirer         @relation(fields: [acquirerId], references: [id])
+  idempotencyKey        String
+  acquirerTxnRef        String
+  campaignId            String
+  campaign              Campaign         @relation(fields: [campaignId], references: [id])
+  campaignVersion       Int
+  terminalId            String
+  terminal              Terminal         @relation(fields: [terminalId], references: [id])
+  // HMAC-SHA256(pepper, acquirer card token). The raw token is never stored.
+  cardTokenHash         String
+  bin                   String
+  scheme                CardScheme
+  currency              Currency
+  originalAmountMinor   BigInt
+  discountMinor         BigInt
+  finalAmountMinor      BigInt
+  refundedDiscountMinor BigInt           @default(0)
+  // [{ partnerId, shareBps, amountMinor }] captured at reservation time.
+  fundingSnapshot       Json
+  // Period bucket keys used for the Redis counters, needed to release them exactly.
+  counterKeys           Json
+  status                RedemptionStatus @default(RESERVED)
+  authCode              String?
+  expiresAt             DateTime
+  confirmedAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  events RedemptionEvent[]
+
+  @@unique([acquirerId, idempotencyKey])
+  @@index([acquirerId, acquirerTxnRef])
+  @@index([campaignId, status])
+  @@index([status, expiresAt])
+  @@index([cardTokenHash])
+}
+
+// Append-only ledger of every state change.
+model RedemptionEvent {
+  id                 String              @id @default(uuid())
+  redemptionId       String
+  redemption         Redemption          @relation(fields: [redemptionId], references: [id])
+  type               RedemptionEventType
+  // Signed change in discount (negative for cancel/refund).
+  discountDeltaMinor BigInt
+  amountMinor        BigInt?
+  payload            Json?
+  createdAt          DateTime            @default(now())
+
+  @@index([redemptionId])
+}
+
+// Every inquiry, including "no discount", for analytics and support. Partition monthly in production.
+model InquiryLog {
+  id             String   @id @default(uuid())
+  acquirerId     String
+  terminalId     String?
+  acquirerTxnRef String
+  bin            String
+  amountMinor    BigInt
+  currency       Currency
+  eligible       Boolean
+  campaignId     String?
+  redemptionId   String?
+  // Reason code when not eligible, or per-campaign rejection summary.
+  reason         String?
+  details        Json?
+  latencyMs      Int
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([campaignId, createdAt])
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  number        String        @unique
+  partnerId     String
+  partner       Partner       @relation(fields: [partnerId], references: [id])
+  currency      Currency
+  periodStart   DateTime
+  periodEnd     DateTime
+  subtotalMinor BigInt
+  vatBps        Int
+  vatMinor      BigInt
+  totalMinor    BigInt
+  status        InvoiceStatus @default(DRAFT)
+  issuedAt      DateTime?
+  dueAt         DateTime?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+
+  lines InvoiceLine[]
+
+  @@unique([partnerId, currency, periodStart])
+}
+
+model InvoiceLine {
+  id                    String  @id @default(uuid())
+  invoiceId             String
+  invoice               Invoice @relation(fields: [invoiceId], references: [id])
+  campaignId            String
+  redemptionCount       Int
+  grossDiscountMinor    BigInt
+  refundedDiscountMinor BigInt
+  partnerShareMinor     BigInt
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole
+  // Set only for PARTNER_USER — scopes the partner portal.
+  partnerId    String?
+  partner      Partner? @relation(fields: [partnerId], references: [id])
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
