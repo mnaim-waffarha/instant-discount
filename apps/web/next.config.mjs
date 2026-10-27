@@ -1,14 +1,9 @@
 /** @type {import('next').NextConfig} */
-const apiUrl = process.env.API_URL ?? 'http://localhost:3000';
-
 export default {
   reactStrictMode: true,
   output: 'standalone',
-  // The browser talks only to this origin; /api/* is proxied to the Nest admin API,
-  // so the session cookie stays first-party.
-  async rewrites() {
-    return [{ source: '/api/:path*', destination: `${apiUrl}/admin/v1/:path*` }];
-  },
+  // The browser talks only to this origin; app/api/[...path]/route.ts proxies /api/* to the
+  // Nest admin API at runtime, so the session cookie stays first-party.
   async headers() {
     return [
       {

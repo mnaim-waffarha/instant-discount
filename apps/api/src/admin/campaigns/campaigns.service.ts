@@ -51,6 +51,7 @@ export function toCampaignInput(c: CampaignWithFundings): CampaignInput {
     },
     fundings: c.fundings.map((f) => ({ partnerId: f.partnerId, shareBps: f.shareBps })),
     settlementMode: c.settlementMode,
+    autoPauseOnFraud: c.autoPauseOnFraud,
   });
 }
 

@@ -8,6 +8,7 @@ import { CampaignCache } from '../src/campaigns/campaign-cache.service';
 import { signRequest } from '../src/common/crypto';
 import { PrismaService } from '../src/infra/prisma.service';
 import { RedisService } from '../src/infra/redis.service';
+import { SettingsService } from '../src/safety/settings.service';
 import { TerminalResolver } from '../src/terminals/terminal-resolver.service';
 import { DEMO, createDemoNetwork, type DemoNetwork } from '../scripts/demo-data';
 
@@ -42,6 +43,7 @@ export async function resetData(h: Omit<Harness, 'net'>): Promise<DemoNetwork> {
   await h.redis.client.flushdb();
   h.app.get(AcquirersService).clear();
   h.app.get(TerminalResolver).clear();
+  await h.app.get(SettingsService).refresh();
   return createDemoNetwork(h.prisma, process.env.SECRETS_ENCRYPTION_KEY!);
 }
 

@@ -202,7 +202,73 @@ let campaignUrl;
   await context.close();
 }
 
-// 7. Partner users are kept out of admin.
+// 7. Admin flips the kill switch: banner everywhere, acquirer gets KILL_SWITCH, then back on.
+{
+  const { createHash, createHmac } = await import('node:crypto');
+  const API = process.env.API_URL ?? 'http://localhost:3000';
+  const inquireOnce = async () => {
+    const ref = `kill-${Date.now()}-${Math.random()}`;
+    const raw = JSON.stringify({
+      terminal_id: 'TID0001',
+      bin: '412345',
+      card_token: `tok_${ref}`,
+      scheme: 'VISA',
+      amount: 50000,
+      currency: 'EGP',
+      acquirer_txn_ref: ref.slice(0, 60),
+    });
+    const ts = String(Math.floor(Date.now() / 1000));
+    const sig = createHmac('sha256', 'demo-secret-change-me')
+      .update(
+        `${ts}\nPOST\n/v1/discounts/inquire\n${createHash('sha256').update(raw).digest('hex')}`,
+      )
+      .digest('hex');
+    const res = await fetch(`${API}/v1/discounts/inquire`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': 'acq_demo',
+        'X-Timestamp': ts,
+        'X-Signature': sig,
+        'Idempotency-Key': ref.slice(0, 100),
+      },
+      body: raw,
+    });
+    return res.json();
+  };
+  const { context, page } = await signIn('admin@waffarha.com');
+  await page.goto(`${BASE}/admin/safety`);
+  await page.getByRole('button', { name: 'Stop all discounts' }).click();
+  await page.locator('#kill-reason').fill('E2E drill');
+  await page.getByRole('dialog').getByRole('button', { name: 'Stop all discounts' }).click();
+  await page.getByText('All discounts are stopped').waitFor();
+  await page.goto(`${BASE}/admin`);
+  await page.getByText(/Kill switch is ON/).waitFor();
+  check(true, 'kill switch banner shows across admin');
+  await page.screenshot({ path: `${OUT}/12-kill-switch-en.png`, fullPage: true });
+  // Settings reach every API instance within seconds.
+  let reason;
+  for (let i = 0; i < 20 && reason !== 'KILL_SWITCH'; i++) {
+    reason = (await inquireOnce()).reason;
+    if (reason !== 'KILL_SWITCH') await new Promise((r) => setTimeout(r, 300));
+  }
+  check(reason === 'KILL_SWITCH', 'acquirer gets KILL_SWITCH while it is on');
+  await page.goto(`${BASE}/admin/safety`);
+  await page.getByRole('button', { name: 'Resume discounts' }).click();
+  await page.locator('#kill-reason').fill('E2E drill over');
+  await page.getByRole('dialog').getByRole('button', { name: 'Resume discounts' }).click();
+  await page.getByText('Discounts are running').waitFor();
+  await page.goto(`${BASE}/admin/alerts`);
+  await page
+    .getByText(/Kill switch turned/)
+    .first()
+    .waitFor();
+  check(true, 'kill switch changes appear as alerts');
+  await page.screenshot({ path: `${OUT}/13-alerts-en.png`, fullPage: true });
+  await context.close();
+}
+
+// 8. Partner users are kept out of admin.
 {
   const context = await browser.newContext();
   const page = await context.newPage();

@@ -441,6 +441,15 @@ export function CampaignWizard({ initial, campaign }: Props) {
               {count('wizard.dailyCount', 'dailyCount')}
               {count('wizard.perCardCount', 'perCardCount')}
               {money('wizard.perCardAmount', 'perCardAmount')}
+              <label className="flex items-center gap-2 self-end text-sm md:col-span-2">
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  checked={form.autoPauseOnFraud}
+                  onChange={(e) => set('autoPauseOnFraud', e.target.checked)}
+                />
+                {t('wizard.autoPause')}
+              </label>
               <Field label={t('wizard.perCardPeriod')}>
                 <Select
                   value={form.perCardPeriod}

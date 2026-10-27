@@ -60,6 +60,8 @@ export type NotEligibleReason =
   | 'TERMINAL_INACTIVE'
   | 'NO_ELIGIBLE_CAMPAIGN'
   | 'LIMITS_REACHED'
+  | 'VELOCITY_LIMIT'
+  | 'KILL_SWITCH'
   | 'UNAVAILABLE';
 
 export interface RedemptionResponse {

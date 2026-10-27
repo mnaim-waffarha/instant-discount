@@ -58,6 +58,7 @@ export interface CampaignInput {
   limits: Limits;
   fundings: Array<{ partnerId: string; shareBps: number }>;
   settlementMode: 'WAFFARHA_COLLECTS' | 'DIRECT';
+  autoPauseOnFraud?: boolean;
 }
 
 export interface Partner {
@@ -98,6 +99,7 @@ export interface Campaign {
   perCardMaxAmountMinor: number | null;
   perCardPeriod: Limits['perCardPeriod'] | null;
   settlementMode: CampaignInput['settlementMode'];
+  autoPauseOnFraud: boolean;
   createdById: string | null;
   updatedById: string | null;
   submittedById: string | null;

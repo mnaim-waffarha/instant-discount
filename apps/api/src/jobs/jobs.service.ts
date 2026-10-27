@@ -6,6 +6,7 @@ import { CountersService, USAGE_STATUSES } from '../counters/counters.service';
 import { LifecycleService } from '../discounts/lifecycle.service';
 import { PrismaService } from '../infra/prisma.service';
 import { RedisService } from '../infra/redis.service';
+import { AlertsService } from '../safety/alerts.service';
 import { SettlementService } from '../settlement/settlement.service';
 
 const EXPIRY_BATCH = 200;
@@ -22,6 +23,7 @@ export class JobsService {
     private readonly lifecycle: LifecycleService,
     private readonly counters: CountersService,
     private readonly settlement: SettlementService,
+    private readonly alerts: AlertsService,
   ) {}
 
   /** Releases reservations the acquirer never confirmed (e.g. it timed out and charged full price). */
@@ -100,11 +102,26 @@ export class JobsService {
             this.logger.warn(
               `Counter drift on campaign ${id}: redis=${snapshot.spent} db=${dbSpent}`,
             );
+            await this.alerts.raise({
+              type: 'COUNTER_DRIFT',
+              severity: 'WARNING',
+              title: 'Budget counter differs from the database',
+              message: `Redis ${snapshot.spent} vs database ${dbSpent} (minor units). If it persists, force a counter rebuild.`,
+              dedupeKey: `drift:${id}:${Math.floor(Date.now() / 3_600_000)}`,
+              campaignId: id,
+              data: { redisSpent: snapshot.spent, dbSpent },
+            });
           }
         }
         return drift;
       })) ?? []
     );
+  }
+
+  /** Budget thresholds, health and fraud signals. */
+  @Interval(60_000)
+  async evaluateAlerts(): Promise<number> {
+    return (await this.redis.withLock('job:alerts', 60_000, () => this.alerts.evaluate())) ?? 0;
   }
 
   /** Keeps the settlement ledger close to real time for dashboards and the portal. */

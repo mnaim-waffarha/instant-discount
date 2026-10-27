@@ -6,6 +6,8 @@ If none does, or the service doesn't answer within ~800 ms, the full amount is c
 
 - [docs/PLAN.md](docs/PLAN.md): requirements, architecture, roadmap and progress
 - [docs/api/acquirer-v1.yaml](docs/api/acquirer-v1.yaml): the API acquirers integrate with (OpenAPI 3)
+- [docs/acquirer-integration-guide.md](docs/acquirer-integration-guide.md): onboarding, signing examples, failure handling, certification
+- [docs/pilot-runbook.md](docs/pilot-runbook.md): go-live checklist, kill-switch drill, month end, incidents
 
 ## Layout
 
@@ -27,6 +29,19 @@ If none does, or the service doesn't answer within ~800 ms, the full amount is c
 3. `POST /v1/discounts/{id}/refund` reverses the discount in proportion to the amount refunded.
 
 Postgres is the source of truth. Redis counters can be rebuilt from it at any time.
+
+Safety: a global kill switch, a per-currency cap on any single discount and a per-card hourly
+limit apply to every payment (Admin → Safety). Budget, health and fraud alerts go to the
+dashboard, admin email and Slack; campaigns can opt in to pause automatically on fraud alerts.
+`/metrics` exposes Prometheus metrics.
+
+## Run the whole stack in Docker
+
+```bash
+cp .env.example .env    # set real secrets
+docker compose -f infra/docker-compose.full.yml up --build
+# web :3001 · api :3000 · Prometheus :9090 · Grafana :3002
+```
 
 ## Development
 

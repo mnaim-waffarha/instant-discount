@@ -87,6 +87,17 @@ enum SettlementMode {
   DIRECT
 }
 
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+}
+
 enum UserRole {
   ADMIN
   CAMPAIGN_MANAGER
@@ -208,7 +219,9 @@ model Campaign {
   perCardMaxAmountMinor BigInt?
   perCardPeriod         LimitPeriod?
 
-  settlementMode SettlementMode @default(WAFFARHA_COLLECTS)
+  settlementMode   SettlementMode @default(WAFFARHA_COLLECTS)
+  // Pause automatically when a fraud alert points at this campaign.
+  autoPauseOnFraud Boolean        @default(false)
 
   createdById     String?
   updatedById     String?
@@ -323,6 +336,8 @@ model InquiryLog {
   terminalId     String?
   acquirerTxnRef String
   bin            String
+  // Hashed card token (same hash as redemptions), for velocity and fraud signals.
+  cardTokenHash  String?
   amountMinor    BigInt
   currency       Currency
   eligible       Boolean
@@ -336,6 +351,8 @@ model InquiryLog {
 
   @@index([createdAt])
   @@index([campaignId, createdAt])
+  @@index([cardTokenHash, createdAt])
+  @@index([terminalId, createdAt])
 }
 
 enum DocumentType {
@@ -509,4 +526,31 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+// Something operations should know about. `dedupeKey` makes each condition fire once.
+model Alert {
+  id             String        @id @default(uuid())
+  type           String
+  severity       AlertSeverity
+  status         AlertStatus   @default(OPEN)
+  title          String
+  message        String
+  dedupeKey      String        @unique
+  campaignId     String?
+  terminalId     String?
+  data           Json?
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  createdAt      DateTime      @default(now())
+
+  @@index([status, createdAt])
+}
+
+// Runtime settings (kill switch, guardrails, alert thresholds), editable by admins.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
 }

@@ -29,6 +29,7 @@ export interface CampaignForm {
   displayMessage: string;
   displayMessageAr: string;
   settlementMode: CampaignInput['settlementMode'];
+  autoPauseOnFraud: boolean;
   discountType: DiscountConfig['type'];
   percent: string;
   maxDiscount: string;
@@ -66,6 +67,7 @@ export function emptyForm(country: Country = 'EG'): CampaignForm {
     displayMessage: '',
     displayMessageAr: '',
     settlementMode: 'WAFFARHA_COLLECTS',
+    autoPauseOnFraud: false,
     discountType: 'PERCENT',
     percent: '20',
     maxDiscount: '',
@@ -109,6 +111,7 @@ export function formFromInput(c: CampaignInput): CampaignForm {
     displayMessage: c.displayMessage ?? '',
     displayMessageAr: c.displayMessageAr ?? '',
     settlementMode: c.settlementMode,
+    autoPauseOnFraud: c.autoPauseOnFraud ?? false,
     discountType: d.type,
     percent: d.type === 'PERCENT' ? String(d.percentBps / 100) : base.percent,
     maxDiscount: d.type === 'PERCENT' ? fromMinor(d.maxDiscountMinor) : '',
@@ -173,6 +176,7 @@ export function campaignToInput(c: Campaign): CampaignInput {
     },
     fundings: c.fundings.map((f) => ({ partnerId: f.partnerId, shareBps: f.shareBps })),
     settlementMode: c.settlementMode,
+    autoPauseOnFraud: c.autoPauseOnFraud,
   };
 }
 

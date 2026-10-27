@@ -157,6 +157,11 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 
 - **Phase 0 — done.** Monorepo, docker-compose, Prisma schema + `init` migration, seed script, CI
   (build, typecheck, unit + integration tests against Postgres/Redis service containers).
+- **Phase 4 — done.** Alerts (budget 50/80/100 %, daily caps, fail-open rate, latency, expiry
+  backlog, counter drift, card velocity, terminal spikes, many cards per terminal) with email and
+  Slack, auto-pause on fraud; kill switch, per-transaction cap and per-card velocity limit on the
+  payment path; Prometheus metrics, JSON logs, request ids; Dockerfiles, full docker-compose,
+  Grafana dashboard; acquirer integration guide and pilot runbook.
 - **Phase 3 — done.** Settlement ledger (exact per-funder shares, refunds reversed in the period
   they happen), monthly drafts per country, INVOICE / PAYOUT_STATEMENT / STATEMENT documents with
   gap-free numbers, VAT table, PDF (EN + Arabic names) and CSV, email on issue, paid/void/overdue;
@@ -280,6 +285,9 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
   next run as a credit (a negative line). Voiding a document releases its entries for the next run.
   Drafting invoices fails if no VAT rate is configured for the country (never a silent 0%).
 - Portal figures are live estimates (net of refunds); issued documents are the official amounts.
+- Metrics are exposed by the API process only; the worker logs job outcomes (no HTTP server).
+- The web app proxies /api/* with a runtime route handler (not a build-time rewrite), so one image
+  serves every environment via API_URL.
 
 ## Defaults assumed — to confirm with acquirer/finance during build
 

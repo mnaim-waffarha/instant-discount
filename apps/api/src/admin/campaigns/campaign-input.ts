@@ -47,6 +47,7 @@ export const campaignInput = z
       )
       .min(1),
     settlementMode: z.enum(['WAFFARHA_COLLECTS', 'DIRECT']).default('WAFFARHA_COLLECTS'),
+    autoPauseOnFraud: z.boolean().default(false),
   })
   .transform((c) => ({ ...c, timezone: c.timezone ?? COUNTRY_DEFAULTS[c.country].timezone }));
 
@@ -153,5 +154,6 @@ export function toCampaignColumns(c: CampaignInput) {
     perCardMaxAmountMinor: big(l.perCardMaxAmountMinor),
     perCardPeriod: l.perCardPeriod,
     settlementMode: c.settlementMode,
+    autoPauseOnFraud: c.autoPauseOnFraud,
   };
 }

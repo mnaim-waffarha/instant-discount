@@ -16,6 +16,7 @@ async function main() {
   // Demo users for local development (sign in with DEV_LOGIN).
   const bank = await prisma.partner.findFirst({ where: { name: 'Demo Bank' } });
   const users = [
+    { email: 'admin@waffarha.com', name: 'Amira Admin', role: 'ADMIN' as const },
     { email: 'manager@waffarha.com', name: 'Mona Manager', role: 'CAMPAIGN_MANAGER' as const },
     { email: 'approver@waffarha.com', name: 'Adel Approver', role: 'APPROVER' as const },
     { email: 'finance@waffarha.com', name: 'Farah Finance', role: 'FINANCE' as const },

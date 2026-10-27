@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
+import { useApi } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useAreaGuard, useSession, type Role } from '@/lib/session';
 import type { MessageKey } from '@/messages/en';
@@ -44,6 +45,8 @@ const NAV: Array<{ group: MessageKey; items: NavItem[] }> = [
   {
     group: 'nav.groupAdmin',
     items: [
+      { href: '/admin/alerts', label: 'nav.alerts' },
+      { href: '/admin/safety', label: 'nav.safety' },
       { href: '/admin/users', label: 'nav.users', roles: ['ADMIN'] },
       { href: '/admin/audit', label: 'nav.audit', roles: ['ADMIN', 'APPROVER', 'FINANCE'] },
     ],
@@ -56,6 +59,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const safety = useApi<{ killSwitch: { enabled: boolean; reason?: string } }>(
+    ready ? '/safety' : null,
+    { refreshMs: 30_000 },
+  );
 
   if (!ready || !user) return <Loading />;
 
@@ -119,6 +126,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
             {t('nav.signOut')}
           </button>
         </header>
+        {safety.data?.killSwitch.enabled && (
+          <div
+            role="alert"
+            className="bg-bad px-4 py-2 text-center text-sm font-medium text-white lg:px-8"
+          >
+            {t('safety.banner', { reason: safety.data.killSwitch.reason ?? '' })}
+          </div>
+        )}
         <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8">{children}</main>
       </div>
     </div>

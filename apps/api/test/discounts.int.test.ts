@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { CountersService } from '../src/counters/counters.service';
 import { LifecycleService } from '../src/discounts/lifecycle.service';
 import { JobsService } from '../src/jobs/jobs.service';
+import { AlertsService } from '../src/safety/alerts.service';
 import { SettlementService } from '../src/settlement/settlement.service';
 import { DEMO, createDemoCampaign } from '../scripts/demo-data';
 import {
@@ -34,6 +35,7 @@ beforeAll(async () => {
     h.app.get(LifecycleService),
     counters,
     h.app.get(SettlementService),
+    h.app.get(AlertsService),
   );
 });
 

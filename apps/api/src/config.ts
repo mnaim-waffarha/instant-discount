@@ -45,6 +45,10 @@ const envSchema = z.object({
   MAIL_FROM: z.string().default('Waffarha Instant Discount <no-reply@waffarha.com>'),
   /** Slack incoming webhook for alerts. Unset = alerts are only stored and logged. */
   SLACK_WEBHOOK_URL: z.string().url().optional(),
+  /** If set, GET /metrics requires `Authorization: Bearer <token>`. */
+  METRICS_TOKEN: z.string().optional(),
+  /** "json" for structured logs (production), "text" for local development. */
+  LOG_FORMAT: z.enum(['json', 'text']).default('text'),
   /** Set to "true" when running behind a load balancer that sets X-Forwarded-For. */
   TRUST_PROXY: z
     .enum(['true', 'false'])

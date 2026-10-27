@@ -446,6 +446,43 @@ export const en = {
   'portal.noDocuments': 'No documents have been issued to you yet.',
   'portal.downloadCsv': 'Download CSV',
   'portal.payments': 'Payments',
+
+  // Safety & alerts
+  'wizard.autoPause': 'Pause this campaign automatically when a fraud alert points at it',
+  'nav.safety': 'Safety',
+  'alerts.title': 'Alerts',
+  'alerts.subtitle':
+    'Budget, health and fraud signals. Serious alerts are also emailed to admins and posted to Slack.',
+  'alerts.open': 'Open',
+  'alerts.acknowledged': 'Acknowledged',
+  'alerts.acknowledge': 'Acknowledge',
+  'alerts.none': 'No alerts.',
+  'severity.INFO': 'Info',
+  'severity.WARNING': 'Warning',
+  'severity.CRITICAL': 'Critical',
+  'safety.title': 'Safety',
+  'safety.subtitle': 'Controls that apply to every payment, on every server, within seconds.',
+  'safety.killSwitch': 'Kill switch',
+  'safety.killOn': 'All discounts are stopped',
+  'safety.killOff': 'Discounts are running',
+  'safety.killHint':
+    'Turning it on makes every inquiry answer "no discount" at once. Payments continue at full price.',
+  'safety.turnOn': 'Stop all discounts',
+  'safety.turnOff': 'Resume discounts',
+  'safety.reason': 'Reason (recorded and sent to admins)',
+  'safety.banner': 'Kill switch is ON: no discounts are being given. {reason}',
+  'safety.guardrails': 'Guardrails',
+  'safety.maxDiscount': 'Maximum discount per payment ({currency})',
+  'safety.velocity': 'Discounts per card per hour (all campaigns)',
+  'safety.thresholds': 'Alert thresholds',
+  'safety.budgetPct': 'Budget alerts at (%)',
+  'safety.errorRate': 'Fail-open rate over 5 min (%)',
+  'safety.p99': 'p99 latency (ms)',
+  'safety.cardInquiries': 'Inquiries per card per hour',
+  'safety.spikeFactor': 'Terminal spike: × usual hourly rate',
+  'safety.spikeMin': 'Terminal spike: at least (per hour)',
+  'safety.cards10': 'Different cards per terminal in 10 min',
+  'safety.saved': 'Saved. All servers use the new values within seconds.',
 } as const;
 
 export type MessageKey = keyof typeof en;

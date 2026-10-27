@@ -9,6 +9,9 @@ import { hashCardToken } from '../common/crypto';
 import { bucketsFor } from '../counters/counter-keys';
 import { CountersService } from '../counters/counters.service';
 import { PrismaService } from '../infra/prisma.service';
+import { RedisService } from '../infra/redis.service';
+import { MetricsService } from '../safety/metrics.service';
+import { SettingsService } from '../safety/settings.service';
 import { TerminalResolver } from '../terminals/terminal-resolver.service';
 import type { InquireRequest, InquireResponse, NotEligibleReason } from './dto';
 
@@ -20,6 +23,8 @@ interface Decision {
   details?: Record<string, string>;
 }
 
+const VELOCITY_WINDOW_MS = 3_600_000;
+
 @Injectable()
 export class InquiryService {
   private readonly logger = new Logger(InquiryService.name);
@@ -29,6 +34,9 @@ export class InquiryService {
     private readonly cache: CampaignCache,
     private readonly counters: CountersService,
     private readonly terminals: TerminalResolver,
+    private readonly redis: RedisService,
+    private readonly settings: SettingsService,
+    private readonly metrics: MetricsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -38,15 +46,21 @@ export class InquiryService {
     req: InquireRequest,
   ): Promise<InquireResponse> {
     const started = Date.now();
+    const cardHash = hashCardToken(this.config.CARD_TOKEN_PEPPER, req.card_token);
     let decision: Decision;
     try {
-      decision = await this.decide(acquirer, idempotencyKey, req, new Date());
+      decision = await this.decide(acquirer, idempotencyKey, req, cardHash, new Date());
     } catch (err) {
       // Fail open: the POS charges the full amount, payments are never blocked by us.
       this.logger.error(`Inquiry ${req.acquirer_txn_ref} failed: ${String(err)}`);
       decision = { response: { eligible: false, reason: 'UNAVAILABLE' } };
     }
-    this.logInquiry(acquirer, req, decision, Date.now() - started);
+    const elapsed = Date.now() - started;
+    this.metrics.inquiries.inc({
+      outcome: decision.response.eligible ? 'GRANTED' : decision.response.reason,
+    });
+    this.metrics.inquiryDuration.observe(elapsed / 1000);
+    this.logInquiry(acquirer, req, cardHash, decision, elapsed);
     return decision.response;
   }
 
@@ -54,12 +68,17 @@ export class InquiryService {
     acquirer: AuthenticatedAcquirer,
     idempotencyKey: string,
     req: InquireRequest,
+    cardHash: string,
     now: Date,
   ): Promise<Decision> {
+    const safety = this.settings.get();
     const notEligible = (reason: NotEligibleReason, extra: Partial<Decision> = {}): Decision => ({
       response: { eligible: false, reason },
       ...extra,
     });
+
+    // Global kill switch: every instance answers "no discount" at once.
+    if (safety.killSwitch.enabled) return notEligible('KILL_SWITCH');
 
     const terminal = await this.terminals.resolve(acquirer.id, req.terminal_id);
     if (!terminal) return notEligible('UNKNOWN_TERMINAL');
@@ -88,7 +107,26 @@ export class InquiryService {
     if (ranked.eligible.length === 0)
       return notEligible('NO_ELIGIBLE_CAMPAIGN', { terminalId: terminal.id, details });
 
-    const cardHash = hashCardToken(this.config.CARD_TOKEN_PEPPER, req.card_token);
+    // Guardrail against misconfigured campaigns: no single discount above the per-currency cap.
+    const cap = safety.maxDiscountPerTxnMinor[req.currency];
+    if (cap !== null)
+      for (const c of ranked.eligible) c.discountMinor = Math.min(c.discountMinor, cap);
+
+    // Card velocity across all campaigns: claim a slot now, give it back if nothing is granted.
+    const velocityKey = `vel:${cardHash}:${Math.floor(now.getTime() / VELOCITY_WINDOW_MS)}`;
+    const maxGrants = safety.cardVelocity.maxGrantsPerHour;
+    if (maxGrants !== null) {
+      const used = await this.redis.client.incr(velocityKey);
+      if (used === 1) await this.redis.client.pexpire(velocityKey, VELOCITY_WINDOW_MS * 2);
+      if (used > maxGrants) {
+        await this.redis.client.decr(velocityKey);
+        return notEligible('VELOCITY_LIMIT', { terminalId: terminal.id, details });
+      }
+    }
+    const releaseVelocity = () =>
+      maxGrants !== null
+        ? this.redis.client.decr(velocityKey).then(() => undefined)
+        : Promise.resolve();
 
     // Highest priority first; fall through to the next campaign when one is capped.
     for (const candidate of ranked.eligible) {
@@ -101,6 +139,7 @@ export class InquiryService {
         candidate.discountMinor,
         now,
       );
+      this.metrics.reserveResults.inc({ result });
       if (result !== 'OK') {
         details[candidate.campaignId] = result;
         continue;
@@ -144,6 +183,7 @@ export class InquiryService {
           candidate.discountMinor,
           true,
         );
+        await releaseVelocity();
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           return this.replayExisting(acquirer.id, idempotencyKey, terminal.id);
         }
@@ -151,6 +191,7 @@ export class InquiryService {
       }
     }
 
+    await releaseVelocity();
     return notEligible('LIMITS_REACHED', { terminalId: terminal.id, details });
   }
 
@@ -227,6 +268,7 @@ export class InquiryService {
   private logInquiry(
     acquirer: AuthenticatedAcquirer,
     req: InquireRequest,
+    cardHash: string,
     d: Decision,
     latencyMs: number,
   ) {
@@ -238,6 +280,7 @@ export class InquiryService {
           terminalId: d.terminalId,
           acquirerTxnRef: req.acquirer_txn_ref,
           bin: req.bin,
+          cardTokenHash: cardHash,
           amountMinor: req.amount,
           currency: req.currency,
           eligible: r.eligible,
