@@ -44,7 +44,8 @@ POS ──► Acquirer ──(mTLS + HMAC)──► Decision API (NestJS, statel
 Admin Web / Partner Portal (Next.js) ─► Admin API (NestJS, JWT + RBAC)
 ```
 
-Monorepo (pnpm + Turborepo):
+**One repository (confirmed):** a single monorepo `instant-discount` (pnpm + Turborepo) holding all
+apps; each app is deployed independently but shares the engine, types and DB schema.
 
 ```
 apps/
