@@ -59,14 +59,11 @@ services:
       redis: { condition: service_healthy }
 
   web:
-    build:
-      context: ..
-      dockerfile: infra/docker/web.Dockerfile
-      args:
-        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
-        NEXT_PUBLIC_DEV_LOGIN: ${NEXT_PUBLIC_DEV_LOGIN:-false}
+    build: { context: .., dockerfile: infra/docker/web.Dockerfile }
     environment:
       API_URL: http://api:3000
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      DEV_LOGIN: ${DEV_LOGIN:-false}
     ports: ['3001:3001']
     depends_on: [api]
 

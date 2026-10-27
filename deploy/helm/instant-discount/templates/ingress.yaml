@@ -1,0 +1,66 @@
+{{- $fullname := include "id.fullname" . -}}
+{{- with .Values.ingress.acquirer }}
+{{- if .enabled }}
+# Acquirer API: only /v1, mutual TLS at the edge, HMAC signatures checked by the app.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-acquirer
+  labels:
+    {{- include "id.labels" $ | nindent 4 }}
+  annotations:
+    {{- range $k, $v := .annotations }}
+    {{- if $v }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- end }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  tls:
+    - hosts: [{{ .host | quote }}]
+      secretName: {{ .tlsSecretName }}
+  rules:
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-api
+                port: { name: http }
+{{- end }}
+{{- end }}
+{{- with .Values.ingress.web }}
+{{- if .enabled }}
+---
+# Admin dashboard and partner portal. The admin API is reached only through the web app's /api proxy.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "id.labels" $ | nindent 4 }}
+  annotations:
+    {{- range $k, $v := .annotations }}
+    {{- if $v }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+    {{- end }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  tls:
+    - hosts: [{{ .host | quote }}]
+      secretName: {{ .tlsSecretName }}
+  rules:
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}-web
+                port: { name: http }
+{{- end }}
+{{- end }}

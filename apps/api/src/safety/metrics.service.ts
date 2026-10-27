@@ -41,6 +41,14 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  readonly jobDuration = new Histogram({
+    name: 'instant_discount_job_duration_seconds',
+    help: 'Background job run time (worker)',
+    labelNames: ['job', 'outcome'] as const,
+    buckets: [0.05, 0.1, 0.5, 1, 5, 15, 30, 60, 120],
+    registers: [this.registry],
+  });
+
   constructor() {
     collectDefaultMetrics({ register: this.registry, prefix: 'instant_discount_' });
   }

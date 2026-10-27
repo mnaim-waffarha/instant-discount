@@ -10,8 +10,10 @@ import { api, ApiError } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useSession, type SessionUser } from '@/lib/session';
 
-const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-const DEV_LOGIN = process.env.NEXT_PUBLIC_DEV_LOGIN === 'true';
+interface RuntimeConfig {
+  googleClientId: string | null;
+  devLogin: boolean;
+}
 
 declare global {
   interface Window {
@@ -40,6 +42,15 @@ function LoginForm() {
   const [linkSent, setLinkSent] = useState(false);
   const [devEmail, setDevEmail] = useState('');
   const [busy, setBusy] = useState(false);
+  const [config, setConfig] = useState<RuntimeConfig>();
+  useEffect(() => {
+    fetch('/runtime-config', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then(setConfig)
+      .catch(() => setConfig({ googleClientId: null, devLogin: false }));
+  }, []);
+  const GOOGLE_CLIENT_ID = config?.googleClientId;
+  const DEV_LOGIN = config?.devLogin ?? false;
 
   const goHome = useCallback(
     (u: SessionUser) =>

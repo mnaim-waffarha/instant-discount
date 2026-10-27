@@ -4,6 +4,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   PORT: z.coerce.number().default(3000),
+  /** Health and metrics port of the background worker. */
+  WORKER_PORT: z.coerce.number().default(3010),
   /** Pepper for hashing acquirer card tokens. Rotating it resets per-card history. */
   CARD_TOKEN_PEPPER: z.string().min(8),
   /** 32-byte key, base64, used to encrypt acquirer HMAC secrets at rest. */

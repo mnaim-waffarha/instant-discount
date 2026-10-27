@@ -4,13 +4,16 @@ For the first live run: one acquirer, one bank, a handful of merchants.
 
 ## Before go-live
 
+Deployment itself (Kubernetes, Argo CD, sealed secrets, registry) is described in
+[`deploy/README.md`](../deploy/README.md).
+
 - [ ] Production secrets set: `CARD_TOKEN_PEPPER`, `SECRETS_ENCRYPTION_KEY` (32 random bytes),
       `GOOGLE_CLIENT_ID`, `SMTP_URL`, `SLACK_WEBHOOK_URL`, `METRICS_TOKEN`. Stored in the secret
       manager, never in the repo. **Back up `SECRETS_ENCRYPTION_KEY`** — without it acquirer
       secrets cannot be decrypted. Rotating `CARD_TOKEN_PEPPER` resets per-card history.
 - [ ] `NODE_ENV=production`, `DEV_LOGIN=false`, `COOKIE_SECURE=true`, `LOG_FORMAT=json`,
-      `TRUST_PROXY=true` behind the load balancer; web built with `NEXT_PUBLIC_DEV_LOGIN=false`.
-- [ ] Database migrations applied (`migrate` service / `prisma migrate deploy`); automated
+      `TRUST_PROXY=true` behind the load balancer; `DEV_LOGIN=false` on the web app too.
+- [ ] Database migrations applied (the chart's `migrate` PreSync Job); automated
       Postgres backups with point-in-time recovery; Redis with AOF persistence.
 - [ ] mTLS enforced at the ingress for `/v1/*`; acquirer egress IPs allow-listed.
 - [ ] VAT rates confirmed by finance (Settlements → VAT rates); billing emails set on partners.

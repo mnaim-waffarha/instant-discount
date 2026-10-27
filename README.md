@@ -8,6 +8,7 @@ If none does, or the service doesn't answer within ~800 ms, the full amount is c
 - [docs/api/acquirer-v1.yaml](docs/api/acquirer-v1.yaml): the API acquirers integrate with (OpenAPI 3)
 - [docs/acquirer-integration-guide.md](docs/acquirer-integration-guide.md): onboarding, signing examples, failure handling, certification
 - [docs/pilot-runbook.md](docs/pilot-runbook.md): go-live checklist, kill-switch drill, month end, incidents
+- [deploy/README.md](deploy/README.md): Kubernetes + Argo CD deployment, secrets, CI/CD, rollback
 
 ## Layout
 
@@ -62,12 +63,12 @@ pnpm --filter @instant-discount/api load -- --requests 2000 --concurrency 50
 Web app (port 3001):
 
 ```bash
-cp apps/web/.env.example apps/web/.env.local   # NEXT_PUBLIC_DEV_LOGIN=true for local sign-in
+cp apps/web/.env.example apps/web/.env.local   # DEV_LOGIN=true for local sign-in
 pnpm --filter @instant-discount/web dev
 ```
 
 Sign-in: staff use Google (`GOOGLE_CLIENT_ID`, `@waffarha.com` only); partner users get an email
-magic link. Locally, with `DEV_LOGIN=true` (API) and `NEXT_PUBLIC_DEV_LOGIN=true` (web), sign in as
+magic link. Locally, with `DEV_LOGIN=true` for both the API and the web app, sign in as
 any seeded user, e.g. `manager@waffarha.com` and `approver@waffarha.com` (campaigns need a
 different user to approve them). `BOOTSTRAP_ADMIN_EMAILS` creates the first admins.
 

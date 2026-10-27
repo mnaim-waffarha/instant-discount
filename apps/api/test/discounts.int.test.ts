@@ -3,6 +3,7 @@ import { CountersService } from '../src/counters/counters.service';
 import { LifecycleService } from '../src/discounts/lifecycle.service';
 import { JobsService } from '../src/jobs/jobs.service';
 import { AlertsService } from '../src/safety/alerts.service';
+import { MetricsService } from '../src/safety/metrics.service';
 import { SettlementService } from '../src/settlement/settlement.service';
 import { DEMO, createDemoCampaign } from '../scripts/demo-data';
 import {
@@ -36,6 +37,7 @@ beforeAll(async () => {
     counters,
     h.app.get(SettlementService),
     h.app.get(AlertsService),
+    h.app.get(MetricsService),
   );
 });
 

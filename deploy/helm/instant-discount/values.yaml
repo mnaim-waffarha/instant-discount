@@ -1,0 +1,101 @@
+# Defaults for every environment. Environment files in deploy/environments/* override these.
+
+image:
+  # Private registry host, e.g. registry.waffarha.com/instant-discount
+  registry: registry.example.com/instant-discount
+  pullPolicy: IfNotPresent
+  # Name of a docker-registry Secret for the private registry (created by the platform team).
+  pullSecret: registry-credentials
+
+# Name of the Secret (from a SealedSecret) holding DATABASE_URL, REDIS_URL, CARD_TOKEN_PEPPER,
+# SECRETS_ENCRYPTION_KEY and the optional GOOGLE_CLIENT_ID, SMTP_URL, SLACK_WEBHOOK_URL, METRICS_TOKEN.
+existingSecret: instant-discount-secrets
+
+# Non-secret settings, rendered into a ConfigMap shared by api, worker and migrations.
+config:
+  NODE_ENV: production
+  LOG_FORMAT: json
+  TRUST_PROXY: 'true'
+  COOKIE_SECURE: 'true'
+  DEV_LOGIN: 'false'
+  GOOGLE_HOSTED_DOMAIN: waffarha.com
+  WEB_BASE_URL: https://instant-discount.example.com
+  BOOTSTRAP_ADMIN_EMAILS: ''
+  MAIL_FROM: 'Waffarha Instant Discount <no-reply@waffarha.com>'
+  RESERVATION_TTL_SECONDS: '600'
+
+api:
+  image: { repository: api, tag: bootstrap, digest: '' }
+  replicas: 2
+  port: 3000
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 60 }
+  pdb: { minAvailable: 1 }
+
+worker:
+  replicas: 1
+  port: 3010
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+web:
+  image: { repository: web, tag: bootstrap, digest: '' }
+  replicas: 2
+  port: 3001
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 384Mi }
+  pdb: { minAvailable: 1 }
+
+migrations:
+  enabled: true
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+
+# Seconds the pod keeps serving after removal from the load balancer, before SIGTERM.
+preStopSleepSeconds: 10
+
+ingress:
+  className: nginx
+  acquirer:
+    enabled: true
+    host: acquirer.instant-discount.example.com
+    tlsSecretName: acquirer-tls
+    # ingress-nginx mTLS: the Secret holds the CA (ca.crt) acquirer client certificates must chain to.
+    annotations:
+      nginx.ingress.kubernetes.io/auth-tls-verify-client: 'on'
+      nginx.ingress.kubernetes.io/auth-tls-secret: instant-discount/acquirer-client-ca
+      nginx.ingress.kubernetes.io/auth-tls-verify-depth: '2'
+      nginx.ingress.kubernetes.io/whitelist-source-range: ''
+  web:
+    enabled: true
+    host: instant-discount.example.com
+    tlsSecretName: web-tls
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+
+networkPolicy:
+  enabled: true
+  # Namespace of the ingress controller and of Prometheus (by kubernetes.io/metadata.name).
+  ingressNamespace: ingress-nginx
+  monitoringNamespace: monitoring
+
+serviceMonitor:
+  # Requires the Prometheus Operator CRDs.
+  enabled: false
+  interval: 30s
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile: { type: RuntimeDefault }
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }

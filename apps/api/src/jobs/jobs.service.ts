@@ -7,6 +7,7 @@ import { LifecycleService } from '../discounts/lifecycle.service';
 import { PrismaService } from '../infra/prisma.service';
 import { RedisService } from '../infra/redis.service';
 import { AlertsService } from '../safety/alerts.service';
+import { MetricsService } from '../safety/metrics.service';
 import { SettlementService } from '../settlement/settlement.service';
 
 const EXPIRY_BATCH = 200;
@@ -24,13 +25,29 @@ export class JobsService {
     private readonly counters: CountersService,
     private readonly settlement: SettlementService,
     private readonly alerts: AlertsService,
+    private readonly metrics: MetricsService,
   ) {}
+
+  /** Runs a job under its Redis lock (one replica at a time) and records how long it took. */
+  private locked<T>(name: string, ttlMs: number, fn: () => Promise<T>): Promise<T | undefined> {
+    return this.redis.withLock(`job:${name}`, ttlMs, async () => {
+      const end = this.metrics.jobDuration.startTimer({ job: name });
+      try {
+        const result = await fn();
+        end({ outcome: 'ok' });
+        return result;
+      } catch (err) {
+        end({ outcome: 'error' });
+        throw err;
+      }
+    });
+  }
 
   /** Releases reservations the acquirer never confirmed (e.g. it timed out and charged full price). */
   @Interval(15_000)
   async expireReservations(): Promise<number> {
     return (
-      (await this.redis.withLock('job:expiry', 60_000, async () => {
+      (await this.locked('expiry', 60_000, async () => {
         // Drain in batches, but stop well before the lock expires.
         const deadline = Date.now() + EXPIRY_RUN_BUDGET_MS;
         let expired = 0;
@@ -56,7 +73,7 @@ export class JobsService {
   @Interval(30_000)
   async advanceCampaigns(): Promise<number> {
     return (
-      (await this.redis.withLock('job:campaign-lifecycle', 30_000, async () => {
+      (await this.locked('campaign-lifecycle', 30_000, async () => {
         const now = new Date();
         const ended = await this.prisma.campaign.updateMany({
           where: { status: { in: ['SCHEDULED', 'ACTIVE', 'PAUSED'] }, endAt: { lte: now } },
@@ -81,7 +98,7 @@ export class JobsService {
   @Interval(300_000)
   async reconcile(): Promise<Array<{ campaignId: string; redisSpent: number; dbSpent: number }>> {
     return (
-      (await this.redis.withLock('job:reconcile', 300_000, async () => {
+      (await this.locked('reconcile', 300_000, async () => {
         const campaigns = await this.prisma.campaign.findMany({
           where: { status: 'ACTIVE' },
           select: { id: true },
@@ -121,15 +138,13 @@ export class JobsService {
   /** Budget thresholds, health and fraud signals. */
   @Interval(60_000)
   async evaluateAlerts(): Promise<number> {
-    return (await this.redis.withLock('job:alerts', 60_000, () => this.alerts.evaluate())) ?? 0;
+    return (await this.locked('alerts', 60_000, () => this.alerts.evaluate())) ?? 0;
   }
 
   /** Keeps the settlement ledger close to real time for dashboards and the portal. */
   @Interval(600_000)
   async buildLedger(): Promise<number> {
-    return (
-      (await this.redis.withLock('job:ledger', 600_000, () => this.settlement.buildLedger())) ?? 0
-    );
+    return (await this.locked('ledger', 600_000, () => this.settlement.buildLedger())) ?? 0;
   }
 
   /** Drafts last month's documents early on the 1st, in each country's own timezone. */
@@ -145,9 +160,7 @@ export class JobsService {
 
   @Cron('0 0 6 * * *')
   async markOverdue(): Promise<number> {
-    return (
-      (await this.redis.withLock('job:overdue', 60_000, () => this.settlement.markOverdue())) ?? 0
-    );
+    return (await this.locked('overdue', 60_000, () => this.settlement.markOverdue())) ?? 0;
   }
 
   private async generateFor(country: 'EG' | 'SA') {

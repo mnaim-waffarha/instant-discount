@@ -1,0 +1,42 @@
+# Argo CD applications for production: the Helm chart and the sealed secrets.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: instant-discount-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mnaim-waffarha/instant-discount.git
+    targetRevision: main
+    path: deploy/helm/instant-discount
+    helm:
+      releaseName: instant-discount
+      valueFiles:
+        - ../../environments/production/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: instant-discount
+  # Manual sync: production changes are applied by a person in Argo CD.
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: instant-discount-production-secrets
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mnaim-waffarha/instant-discount.git
+    targetRevision: main
+    path: deploy/environments/production/secrets
+    directory:
+      include: '*.sealed.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: instant-discount
+  # Manual sync: production changes are applied by a person in Argo CD.
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]

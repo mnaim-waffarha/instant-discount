@@ -1,0 +1,6 @@
+Instant Discount {{ .Chart.AppVersion }} deployed as "{{ .Release.Name }}".
+
+  Acquirer API: https://{{ .Values.ingress.acquirer.host }}/v1   (mTLS + HMAC)
+  Admin/portal: https://{{ .Values.ingress.web.host }}
+
+Secrets come from the Secret "{{ .Values.existingSecret }}" (a SealedSecret); see deploy/README.md.
