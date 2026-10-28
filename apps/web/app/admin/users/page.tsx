@@ -1,5 +1,7 @@
 'use client';
 
+import { UserPlus } from 'lucide-react';
+import {} from 'lucide-react';
 import { useState } from 'react';
 import { FormModal } from '@/components/FormModal';
 import {
@@ -56,6 +58,7 @@ export default function UsersPage() {
         subtitle={t('users.inviteHint')}
         actions={
           <Button
+            icon={UserPlus}
             onClick={() =>
               setForm({ email: '', name: '', role: 'VIEWER', partnerId: '', locale: 'en' })
             }
@@ -75,7 +78,7 @@ export default function UsersPage() {
           }}
         />
         <ErrorBox error={list.error} onRetry={list.reload} />
-        <div className="-mx-5 -mb-5">
+        <div className="-mx-4 sm:-mx-5 -mb-5">
           {list.loading && !list.data ? (
             <Loading />
           ) : (

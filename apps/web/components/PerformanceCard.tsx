@@ -1,5 +1,6 @@
 'use client';
 
+import { TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 import { useApi } from '@/lib/api';
 import { formatDate, formatMoney, formatNumber } from '@/lib/format';
@@ -41,6 +42,8 @@ export function PerformanceCard({ path, csvHref }: { path: string; csvHref?: str
   return (
     <Card
       title={t('perf.title')}
+      icon={TrendingUp}
+      tone="ok"
       actions={
         csvHref && r && r.groups.length > 0 ? (
           <a className="text-sm font-medium text-brand" href={csvHref}>
@@ -76,7 +79,7 @@ export function PerformanceCard({ path, csvHref }: { path: string; csvHref?: str
                 hover={hover}
                 setHover={setHover}
               />
-              <div className="-mx-5 overflow-x-auto">
+              <div className="-mx-4 sm:-mx-5 overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-line text-xs text-ink-muted">

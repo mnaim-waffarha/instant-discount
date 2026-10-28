@@ -1,11 +1,21 @@
 'use client';
 
+import {
+  Activity,
+  BadgePercent,
+  ClipboardCheck,
+  Megaphone,
+  Plus,
+  SearchX,
+  Timer,
+} from 'lucide-react';
 import Link from 'next/link';
 import {
   CampaignStatusBadge,
   Card,
   Empty,
   ErrorBox,
+  LinkButton,
   Loading,
   PageHeader,
   Stat,
@@ -14,11 +24,13 @@ import {
 import { useApi, type Page } from '@/lib/api';
 import { formatDate, formatNumber } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+import { EDITORS, useSession } from '@/lib/session';
 import type { Campaign, InquirySummary } from '@/lib/types';
 import type { MessageKey } from '@/messages/en';
 
 export default function OverviewPage() {
   const { t, locale } = useI18n();
+  const { can } = useSession();
   const active = useApi<Page<Campaign>>('/campaigns?status=ACTIVE&pageSize=10', {
     refreshMs: 30_000,
   });
@@ -32,33 +44,59 @@ export default function OverviewPage() {
 
   return (
     <>
-      <PageHeader title={t('overview.title')} />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <PageHeader
+        title={t('overview.title')}
+        actions={
+          can(...EDITORS) && (
+            <LinkButton href="/admin/campaigns/new" icon={Plus}>
+              {t('campaigns.new')}
+            </LinkButton>
+          )
+        }
+      />
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <Stat
+          icon={Megaphone}
           label={t('overview.activeCampaigns')}
           value={formatNumber(active.data?.total, locale)}
         />
-        <Link href="/admin/approvals">
+        <Link
+          href="/admin/approvals"
+          className="block h-full rounded-card transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        >
           <Stat
+            icon={ClipboardCheck}
+            tone="sun"
             label={t('overview.awaitingApproval')}
             value={formatNumber(awaiting.data?.total, locale)}
           />
         </Link>
-        <Stat label={t('overview.inquiries24h')} value={formatNumber(s?.total, locale)} />
         <Stat
+          icon={Activity}
+          tone="sky"
+          label={t('overview.inquiries24h')}
+          value={formatNumber(s?.total, locale)}
+        />
+        <Stat
+          icon={BadgePercent}
+          tone="ok"
           label={t('overview.granted24h')}
           value={formatNumber(s?.granted, locale)}
           hint={s && s.total ? `${Math.round((s.granted / s.total) * 100)}%` : undefined}
         />
-        <Stat
-          label={t('overview.latency')}
-          value={`${ms(s?.latencyMs.p95)} / ${ms(s?.latencyMs.p99)}`}
-        />
+        <div className="col-span-2 lg:col-span-1">
+          <Stat
+            icon={Timer}
+            tone="tangerine"
+            label={t('overview.latency')}
+            value={`${ms(s?.latencyMs.p95)} / ${ms(s?.latencyMs.p99)}`}
+          />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3" title={t('overview.liveCampaigns')}>
-          <div className="-m-5">
+        <Card className="lg:col-span-3" title={t('overview.liveCampaigns')} icon={Megaphone}>
+          <div className="-m-4 sm:-m-5">
             <ErrorBox error={active.error} onRetry={active.reload} />
             {active.loading && !active.data ? (
               <Loading />
@@ -94,7 +132,12 @@ export default function OverviewPage() {
             )}
           </div>
         </Card>
-        <Card className="lg:col-span-2" title={t('overview.reasons')}>
+        <Card
+          className="lg:col-span-2"
+          title={t('overview.reasons')}
+          icon={SearchX}
+          tone="tangerine"
+        >
           <ErrorBox error={summary.error} />
           {s && s.reasons.length === 0 && <Empty>{t('overview.noReasons')}</Empty>}
           <ul className="space-y-2">

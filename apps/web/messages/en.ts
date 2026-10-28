@@ -19,6 +19,9 @@ export const en = {
   'nav.alerts': 'Alerts',
   'nav.portal': 'Portal',
   'nav.signOut': 'Sign out',
+  'nav.main': 'Main menu',
+  'nav.openMenu': 'Open menu',
+  'nav.closeMenu': 'Close menu',
   'nav.groupOperate': 'Operate',
   'nav.groupNetwork': 'Network',
   'nav.groupAdmin': 'Administration',
@@ -78,6 +81,10 @@ export const en = {
 
   // Auth
   'login.title': 'Sign in',
+  'login.panelTitle': 'Card discounts, decided in milliseconds',
+  'login.point1': 'Real-time decisions at the point of sale, with a safe fall-back to full price',
+  'login.point2': 'Co-funded campaigns with banks, merchants and Waffarha',
+  'login.point3': 'Exact settlement, invoices and partner reports',
   'login.subtitle': 'Card discounts at the point of sale',
   'login.staff': 'Waffarha team',
   'login.staffHint': 'Sign in with your @waffarha.com Google account.',
@@ -167,6 +174,8 @@ export const en = {
   'campaign.noData': 'No redemptions yet.',
 
   // Wizard
+  'wizard.steps': 'Steps',
+  'wizard.stepOf': 'Step {n} of {total}',
   'wizard.stepBasics': 'Basics',
   'wizard.stepDiscount': 'Discount',
   'wizard.stepTargeting': 'Targeting',

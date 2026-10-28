@@ -28,7 +28,7 @@ export default function ApprovalsPage() {
       <PageHeader title={t('approvals.title')} subtitle={t('approvals.subtitle')} />
       <Card>
         <ErrorBox error={error} onRetry={reload} />
-        <div className="-m-5">
+        <div className="-m-4 sm:-m-5">
           {loading && !data ? (
             <Loading />
           ) : (

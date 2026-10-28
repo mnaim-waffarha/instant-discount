@@ -1,5 +1,6 @@
 'use client';
 
+import { BadgePercent, CreditCard, Megaphone, Wallet } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   CampaignStatusBadge,
@@ -43,23 +44,33 @@ export default function PortalHome() {
     <>
       <PageHeader title={t('portal.title')} subtitle={t('portal.shareNote')} />
       <ErrorBox error={error} onRetry={reload} />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label={t('portal.campaignCount')} value={formatNumber(data?.length, locale)} />
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat
+          icon={Megaphone}
+          label={t('portal.campaignCount')}
+          value={formatNumber(data?.length, locale)}
+        />
+        <Stat
+          icon={CreditCard}
+          tone="sky"
           label={t('portal.redemptions')}
           value={formatNumber(data ? sum('redemptions') : undefined, locale)}
         />
         <Stat
+          icon={BadgePercent}
+          tone="tangerine"
           label={t('portal.discountGiven')}
           value={data ? formatMoney(sum('discountMinor'), currency, locale) : '—'}
         />
         <Stat
+          icon={Wallet}
+          tone="ok"
           label={t('portal.yourShare')}
           value={data ? formatMoney(sum('partnerShareMinor'), currency, locale) : '—'}
         />
       </div>
-      <Card title={t('portal.campaigns')}>
-        <div className="-m-5">
+      <Card title={t('portal.campaigns')} icon={Megaphone}>
+        <div className="-m-4 sm:-m-5">
           {loading && !data ? (
             <Loading />
           ) : (

@@ -28,6 +28,12 @@ async function signIn(email) {
   await page.getByPlaceholder('name@waffarha.com').fill(email);
   await page.getByRole('button', { name: 'Sign in as this user' }).click();
   await page.waitForURL(/\/(admin|portal)/);
+  // The language is saved per user; start every run in English.
+  await page.waitForLoadState('networkidle');
+  if ((await page.locator('html').getAttribute('lang')) === 'ar') {
+    await page.getByRole('button', { name: 'English' }).first().click();
+    await page.waitForFunction(() => document.documentElement.lang === 'en');
+  }
   return { context, page };
 }
 

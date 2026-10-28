@@ -1,7 +1,23 @@
 'use client';
 
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgePercent,
+  CalendarClock,
+  Check,
+  ClipboardList,
+  FileText,
+  FlaskConical,
+  Gauge,
+  Save,
+  Send,
+  Target,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, useApi, type Page, ApiError } from '@/lib/api';
 import {
   COUNTRY,
@@ -18,6 +34,17 @@ import type { Campaign, Merchant, Partner, Terminal } from '@/lib/types';
 import type { MessageKey } from '@/messages/en';
 import { DiscountEditor } from './DiscountEditor';
 import { Button, Card, ErrorBox, Field, Select } from './ui';
+
+const STEP_ICONS: LucideIcon[] = [
+  FileText,
+  BadgePercent,
+  Target,
+  Gauge,
+  Wallet,
+  CalendarClock,
+  FlaskConical,
+  ClipboardList,
+];
 
 const STEPS: MessageKey[] = [
   'wizard.stepBasics',
@@ -113,17 +140,7 @@ export function CampaignWizard({ initial, campaign }: Props) {
           {t('wizard.liveNote')}
         </p>
       )}
-      <nav className="flex flex-wrap gap-1" aria-label="Steps">
-        {STEPS.map((s, i) => (
-          <button
-            key={s}
-            onClick={() => setStep(i)}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium ${i === step ? 'bg-brand text-white' : 'bg-white text-ink-muted ring-1 ring-line hover:text-ink'}`}
-          >
-            <span className="ltr">{i + 1}</span>. {t(s)}
-          </button>
-        ))}
-      </nav>
+      <Stepper step={step} onStep={setStep} />
       <ErrorBox error={error} />
 
       <Card>
@@ -575,21 +592,27 @@ export function CampaignWizard({ initial, campaign }: Props) {
         )}
       </Card>
 
-      <div className="flex flex-wrap justify-between gap-2">
+      {/* On phones the actions stay reachable at the bottom of the screen. */}
+      <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap justify-between gap-2 border-t border-line bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
         <Button variant="secondary" disabled={step === 0} onClick={() => setStep(step - 1)}>
+          <ArrowLeft className="h-4 w-4 rtl:rotate-180" aria-hidden />
           {t('common.back')}
         </Button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           {step < STEPS.length - 1 ? (
-            <Button onClick={() => setStep(step + 1)}>{t('common.next')}</Button>
+            <Button onClick={() => setStep(step + 1)}>
+              {t('common.next')}
+              <ArrowRight className="h-4 w-4 rtl:rotate-180" aria-hidden />
+            </Button>
           ) : live ? (
-            <Button loading={saving === 'draft'} onClick={() => void save(false)}>
+            <Button icon={Send} loading={saving === 'draft'} onClick={() => void save(false)}>
               {t('wizard.proposeChange')}
             </Button>
           ) : (
             <>
               <Button
                 variant="secondary"
+                icon={Save}
                 loading={saving === 'draft'}
                 disabled={!!saving}
                 onClick={() => void save(false)}
@@ -597,6 +620,7 @@ export function CampaignWizard({ initial, campaign }: Props) {
                 {t('wizard.saveDraft')}
               </Button>
               <Button
+                icon={Send}
                 loading={saving === 'submit'}
                 disabled={!!saving}
                 onClick={() => void save(true)}
@@ -607,6 +631,56 @@ export function CampaignWizard({ initial, campaign }: Props) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Step navigation: one scrollable row with icons, plus "Step x of y" and a progress bar. */
+function Stepper({ step, onStep }: { step: number; onStep: (i: number) => void }) {
+  const { t } = useI18n();
+  const active = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    active.current?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  }, [step]);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-ink-muted sm:hidden">
+        <span>{t('wizard.stepOf', { n: step + 1, total: STEPS.length })}</span>
+        <span className="font-medium text-ink">{t(STEPS[step]!)}</span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-line sm:hidden" aria-hidden>
+        <div
+          className="h-full rounded-full bg-brand transition-all"
+          style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+        />
+      </div>
+      <nav
+        className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0"
+        aria-label={t('wizard.steps')}
+      >
+        {STEPS.map((s, i) => {
+          const Icon = i < step ? Check : STEP_ICONS[i]!;
+          const current = i === step;
+          return (
+            <button
+              key={s}
+              ref={current ? active : undefined}
+              onClick={() => onStep(i)}
+              aria-current={current ? 'step' : undefined}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                current
+                  ? 'bg-brand text-white shadow-sm'
+                  : i < step
+                    ? 'bg-brand-50 text-brand ring-1 ring-brand/20 hover:bg-brand-50/70'
+                    : 'bg-white text-ink-muted ring-1 ring-line hover:text-ink'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" aria-hidden />
+              <span className="ltr">{i + 1}.</span> {t(s)}
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

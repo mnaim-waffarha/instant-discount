@@ -1,5 +1,6 @@
 'use client';
 
+import { Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import {
@@ -41,7 +42,9 @@ export default function CampaignsPage() {
         title={t('campaigns.title')}
         actions={
           can(...EDITORS) && (
-            <LinkButton href="/admin/campaigns/new">{t('campaigns.new')}</LinkButton>
+            <LinkButton icon={Plus} href="/admin/campaigns/new">
+              {t('campaigns.new')}
+            </LinkButton>
           )
         }
       />
@@ -79,7 +82,7 @@ export default function CampaignsPage() {
           />
         </div>
         <ErrorBox error={error} onRetry={reload} />
-        <div className="-mx-5 -mb-5">
+        <div className="-mx-4 sm:-mx-5 -mb-5">
           {loading && !data ? (
             <Loading />
           ) : (

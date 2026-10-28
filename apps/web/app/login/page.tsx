@@ -1,11 +1,12 @@
 'use client';
 
+import { Building2, Handshake, Mail, MailCheck, Receipt, Terminal, Zap } from 'lucide-react';
 import Script from 'next/script';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { LanguageToggle } from '@/components/LanguageToggle';
 import { Logo } from '@/components/Logo';
-import { Button, ErrorBox, Field } from '@/components/ui';
+import { Button, ErrorBox, Field, IconChip } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { useSession, type SessionUser } from '@/lib/session';
@@ -96,97 +97,154 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+    <div className="min-h-screen lg:grid lg:grid-cols-2">
       {GOOGLE_CLIENT_ID && (
         <Script src="https://accounts.google.com/gsi/client" onLoad={renderGoogle} />
       )}
-      <div className="absolute end-4 top-4">
-        <LanguageToggle />
-      </div>
-      <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Logo />
-          <h1 className="mt-6 text-2xl font-semibold">{t('login.title')}</h1>
-          <p className="mt-1 text-sm text-ink-muted">{t('login.subtitle')}</p>
+
+      {/* Brand panel (desktop) */}
+      <aside className="relative hidden overflow-hidden bg-gradient-to-br from-navy-dark via-brand-600 to-brand p-12 text-white lg:flex lg:flex-col lg:justify-between">
+        <div
+          className="pointer-events-none absolute -end-24 -top-24 h-80 w-80 rounded-full bg-sky/20 blur-3xl"
+          aria-hidden
+        />
+        <div className="flex items-center gap-3">
+          <Logo compact />
+          <span className="text-lg font-semibold">Instant Discount</span>
         </div>
+        <div className="relative max-w-md">
+          <h2 className="text-3xl font-semibold leading-tight">{t('login.panelTitle')}</h2>
+          <ul className="mt-8 space-y-5">
+            {(
+              [
+                [Zap, 'login.point1'],
+                [Handshake, 'login.point2'],
+                [Receipt, 'login.point3'],
+              ] as const
+            ).map(([Icon, key]) => (
+              <li key={key} className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/15">
+                  <Icon className="h-5 w-5 text-sun" aria-hidden />
+                </span>
+                <span className="pt-1.5 text-sm text-white/90">{t(key)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="text-xs text-white/60">{t('app.by')}</p>
+      </aside>
 
-        <div className="space-y-4">
-          <ErrorBox error={error} />
+      <div className="relative flex min-h-screen flex-col items-center justify-center px-4 py-10">
+        <div className="absolute end-4 top-4">
+          <LanguageToggle />
+        </div>
+        <div className="w-full max-w-md">
+          <div className="mb-8 text-center">
+            <div className="lg:hidden">
+              <Logo />
+            </div>
+            <h1 className="mt-6 text-2xl font-semibold lg:mt-0">{t('login.title')}</h1>
+            <p className="mt-1 text-sm text-ink-muted">{t('login.subtitle')}</p>
+          </div>
 
-          <section className="card p-5">
-            <h2 className="text-sm font-semibold">{t('login.staff')}</h2>
-            <p className="mb-4 mt-1 text-xs text-ink-muted">{t('login.staffHint')}</p>
-            {GOOGLE_CLIENT_ID ? (
-              <div id="google-button" className="flex justify-center" />
-            ) : (
-              <p className="text-xs text-ink-faint">{t('login.googleNotConfigured')}</p>
-            )}
-          </section>
+          <div className="space-y-4">
+            <ErrorBox error={error} />
 
-          <section className="card p-5">
-            <h2 className="text-sm font-semibold">{t('login.partner')}</h2>
-            <p className="mb-4 mt-1 text-xs text-ink-muted">{t('login.partnerHint')}</p>
-            {linkSent ? (
-              <p className="rounded-lg bg-ok-bg px-3 py-2 text-sm text-ok">{t('login.linkSent')}</p>
-            ) : (
-              <form
-                className="space-y-3"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  setBusy(true);
-                  try {
-                    await api('/auth/magic-link', { body: { email } });
-                    setLinkSent(true);
-                  } catch (err) {
-                    setError((err as ApiError).message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                <Field label={t('common.email')}>
+            <section className="card p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <IconChip icon={Building2} />
+                <div>
+                  <h2 className="text-sm font-semibold">{t('login.staff')}</h2>
+                  <p className="mt-0.5 text-xs text-ink-muted">{t('login.staffHint')}</p>
+                </div>
+              </div>
+              {GOOGLE_CLIENT_ID ? (
+                <div id="google-button" className="flex justify-center" />
+              ) : (
+                <p className="rounded-lg bg-canvas px-3 py-2 text-xs text-ink-faint">
+                  {t('login.googleNotConfigured')}
+                </p>
+              )}
+            </section>
+
+            <section className="card p-5">
+              <div className="mb-4 flex items-start gap-3">
+                <IconChip icon={Handshake} tone="sky" />
+                <div>
+                  <h2 className="text-sm font-semibold">{t('login.partner')}</h2>
+                  <p className="mt-0.5 text-xs text-ink-muted">{t('login.partnerHint')}</p>
+                </div>
+              </div>
+              {linkSent ? (
+                <p className="flex items-center gap-2 rounded-lg bg-ok-bg px-3 py-2 text-sm text-ok">
+                  <MailCheck className="h-4 w-4 shrink-0" aria-hidden />
+                  {t('login.linkSent')}
+                </p>
+              ) : (
+                <form
+                  className="space-y-3"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setBusy(true);
+                    try {
+                      await api('/auth/magic-link', { body: { email } });
+                      setLinkSent(true);
+                    } catch (err) {
+                      setError((err as ApiError).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <Field label={t('common.email')}>
+                    <input
+                      className="input ltr"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                    />
+                  </Field>
+                  <Button className="w-full" icon={Mail} loading={busy}>
+                    {t('login.sendLink')}
+                  </Button>
+                </form>
+              )}
+            </section>
+
+            {DEV_LOGIN && (
+              <section className="card border-dashed p-5">
+                <div className="mb-4 flex items-start gap-3">
+                  <IconChip icon={Terminal} tone="neutral" />
+                  <div>
+                    <h2 className="text-sm font-semibold">{t('login.dev')}</h2>
+                    <p className="mt-0.5 text-xs text-ink-muted">{t('login.devHint')}</p>
+                  </div>
+                </div>
+                <form
+                  className="flex flex-col gap-2 sm:flex-row"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void finish(api<SessionUser>('/auth/dev-login', { body: { email: devEmail } }));
+                  }}
+                >
                   <input
                     className="input ltr"
                     type="email"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
+                    placeholder="name@waffarha.com"
+                    value={devEmail}
+                    onChange={(e) => setDevEmail(e.target.value)}
+                    aria-label={t('common.email')}
                   />
-                </Field>
-                <Button className="w-full" loading={busy}>
-                  {t('login.sendLink')}
-                </Button>
-              </form>
+                  <Button variant="secondary" loading={busy}>
+                    {t('login.devButton')}
+                  </Button>
+                </form>
+              </section>
             )}
-          </section>
-
-          {DEV_LOGIN && (
-            <section className="card border-dashed p-5">
-              <h2 className="text-sm font-semibold">{t('login.dev')}</h2>
-              <p className="mb-4 mt-1 text-xs text-ink-muted">{t('login.devHint')}</p>
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void finish(api<SessionUser>('/auth/dev-login', { body: { email: devEmail } }));
-                }}
-              >
-                <input
-                  className="input ltr"
-                  type="email"
-                  required
-                  placeholder="name@waffarha.com"
-                  value={devEmail}
-                  onChange={(e) => setDevEmail(e.target.value)}
-                  aria-label={t('common.email')}
-                />
-                <Button variant="secondary" loading={busy}>
-                  {t('login.devButton')}
-                </Button>
-              </form>
-            </section>
-          )}
+          </div>
         </div>
       </div>
     </div>

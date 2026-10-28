@@ -36,7 +36,7 @@ export default function AuditPage() {
           }}
         />
         <ErrorBox error={list.error} onRetry={list.reload} />
-        <div className="-mx-5 -mb-5">
+        <div className="-mx-4 sm:-mx-5 -mb-5">
           {list.loading && !list.data ? (
             <Loading />
           ) : (

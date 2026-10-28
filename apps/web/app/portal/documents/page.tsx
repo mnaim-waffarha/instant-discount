@@ -27,7 +27,7 @@ export default function PortalDocuments() {
       <PageHeader title={t('portal.documents')} />
       <Card>
         <ErrorBox error={error} />
-        <div className="-m-5">
+        <div className="-m-4 sm:-m-5">
           {loading && !data ? (
             <Loading />
           ) : (

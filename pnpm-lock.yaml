@@ -135,6 +135,9 @@ importers:
 
   apps/web:
     dependencies:
+      lucide-react:
+        specifier: ^0.468.0
+        version: 0.468.0(react@19.1.1)
       next:
         specifier: 15.5.4
         version: 15.5.4(@opentelemetry/api@1.10.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -1979,6 +1982,11 @@ packages:
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
+
+  lucide-react@0.468.0:
+    resolution: {integrity: sha512-6koYRhnM2N0GGZIdXzSeiNwguv1gt/FAjZOiPl76roBi3xKEXa4WmfpxgQwTTL4KipXjefrnf3oV4IsYhi4JFA==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
 
   lunr@2.3.9:
     resolution: {integrity: sha512-zTU3DaZaF3Rt9rhN3uBMGQD3dD2/vFQqnvZCDv4dl5iOzq2IZQqTxu90r4E5J+nP70J3ilqVCrbho2eWaeW8Ow==}
@@ -4522,6 +4530,10 @@ snapshots:
       js-tokens: 4.0.0
 
   loupe@3.2.1: {}
+
+  lucide-react@0.468.0(react@19.1.1):
+    dependencies:
+      react: 19.1.1
 
   lunr@2.3.9: {}
 

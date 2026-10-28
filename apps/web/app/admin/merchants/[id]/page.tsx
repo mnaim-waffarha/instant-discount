@@ -1,5 +1,7 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import {} from 'lucide-react';
 import { use, useState } from 'react';
 import { FormModal } from '@/components/FormModal';
 import { Badge, Button, Card, ErrorBox, Field, Loading, PageHeader, Table } from '@/components/ui';
@@ -27,7 +29,7 @@ export default function MerchantPage({ params }: { params: Promise<{ id: string 
         subtitle={`${m.partner?.name} · ${t(`country.${m.country}`)} · MCC ${m.mcc}`}
         actions={
           can(...EDITORS) && (
-            <Button onClick={() => setBranch({ name: '', city: '' })}>
+            <Button icon={Plus} onClick={() => setBranch({ name: '', city: '' })}>
               {t('merchants.newBranch')}
             </Button>
           )
@@ -45,7 +47,7 @@ export default function MerchantPage({ params }: { params: Promise<{ id: string 
           </ul>
         </Card>
         <Card className="lg:col-span-2" title={t('merchants.terminals')}>
-          <div className="-m-5">
+          <div className="-m-4 sm:-m-5">
             <Table
               rows={terminals.data?.items ?? []}
               rowKey={(x) => x.id}

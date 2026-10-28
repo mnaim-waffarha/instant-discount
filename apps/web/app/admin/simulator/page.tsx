@@ -192,7 +192,7 @@ export default function SimulatorPage() {
           )}
           {result && (
             <Card>
-              <div className="-m-5">
+              <div className="-m-4 sm:-m-5">
                 <Table
                   rows={result.results}
                   rowKey={(r) => r.campaignId}
