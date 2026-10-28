@@ -30,7 +30,7 @@ function compact(minor: number, locale: Locale) {
 
 /**
  * Daily discount columns (single series, so no legend; the card title names it).
- * Orange on white is below 3:1, so the peak is labelled and a table view is provided.
+ * Brand blue (PANTONE 7687 C, lightened for charts); the peak is labelled and a table view is provided.
  */
 export function DailyChart({
   data,
@@ -109,7 +109,7 @@ export function DailyChart({
                 {h > 0 && (
                   <path
                     d={path}
-                    fill="#FE5F00"
+                    fill="#2C59B0"
                     opacity={hover === null || hover === i ? 1 : 0.55}
                   />
                 )}
