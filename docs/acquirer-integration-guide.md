@@ -1,7 +1,8 @@
 # Acquirer integration guide
 
 This guide is for payment providers (acquirers) connecting their POS terminals to Waffarha
-Instant Discount. The formal contract is the OpenAPI spec in [`api/acquirer-v1.yaml`](api/acquirer-v1.yaml).
+Instant Discount. The formal contract is the OpenAPI spec in [`api/acquirer-v1.yaml`](api/acquirer-v1.yaml)
+(readable version: [`api/acquirer.html`](api/acquirer.html)), generated from the code.
 
 ## 1. What happens at the till
 

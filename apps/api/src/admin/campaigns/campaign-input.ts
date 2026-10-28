@@ -14,15 +14,28 @@ const positiveInt = z.number().int().positive();
 
 export const limitsSchema = z
   .object({
-    totalBudgetMinor: minor.nullable().optional(),
-    maxUniqueCards: positiveInt.nullable().optional(),
-    dailyBudgetMinor: minor.nullable().optional(),
-    dailyRedemptionLimit: positiveInt.nullable().optional(),
-    perCardMaxCount: positiveInt.nullable().optional(),
-    perCardMaxAmountMinor: minor.nullable().optional(),
-    perCardPeriod: z.enum(['DAY', 'WEEK', 'CAMPAIGN']).default('CAMPAIGN'),
+    totalBudgetMinor: minor
+      .nullable()
+      .optional()
+      .describe('Total discount budget; null = unlimited'),
+    maxUniqueCards: positiveInt.nullable().optional().describe('Distinct cards; null = unlimited'),
+    dailyBudgetMinor: minor.nullable().optional().describe('Discount per day; null = unlimited'),
+    dailyRedemptionLimit: positiveInt
+      .nullable()
+      .optional()
+      .describe('Discounted payments per day; null = unlimited'),
+    perCardMaxCount: positiveInt.nullable().optional().describe('Uses per card per period'),
+    perCardMaxAmountMinor: minor
+      .nullable()
+      .optional()
+      .describe('Discount per card per period, minor units'),
+    perCardPeriod: z
+      .enum(['DAY', 'WEEK', 'CAMPAIGN'])
+      .default('CAMPAIGN')
+      .describe('When per-card limits reset (WEEK starts on Saturday)'),
   })
-  .default({});
+  .default({})
+  .describe('Caps are enforced atomically on every payment; days follow the campaign timezone.');
 
 export const campaignInput = z
   .object({
@@ -31,25 +44,48 @@ export const campaignInput = z
     description: z.string().max(2000).optional(),
     country: z.enum(['EG', 'SA']),
     currency: z.enum(['EGP', 'SAR']),
-    timezone: z.string().optional(),
+    timezone: z.string().optional().describe('IANA timezone; defaults to the country’s'),
     startAt: z.coerce.date(),
     endAt: z.coerce.date(),
-    priority: z.number().int().min(0).max(1000).default(0),
+    priority: z
+      .number()
+      .int()
+      .min(0)
+      .max(1000)
+      .default(0)
+      .describe('When several campaigns match, the highest priority wins'),
     discount: discountConfigSchema,
     targeting: targetingSchema.default({}),
     schedule: scheduleSchema.nullable().optional(),
-    displayMessage: z.string().max(120).optional(),
+    displayMessage: z.string().max(120).optional().describe('Shown on the POS screen / receipt'),
     displayMessageAr: z.string().max(120).optional(),
     limits: limitsSchema,
     fundings: z
       .array(
         z.object({ partnerId: z.string().uuid(), shareBps: z.number().int().min(1).max(10_000) }),
       )
-      .min(1),
-    settlementMode: z.enum(['WAFFARHA_COLLECTS', 'DIRECT']).default('WAFFARHA_COLLECTS'),
-    autoPauseOnFraud: z.boolean().default(false),
+      .min(1)
+      .describe('Who pays for the discount; shares (basis points) must total 10000'),
+    settlementMode: z
+      .enum(['WAFFARHA_COLLECTS', 'DIRECT'])
+      .default('WAFFARHA_COLLECTS')
+      .describe(
+        'WAFFARHA_COLLECTS: Waffarha invoices funders and pays the merchant. DIRECT: funders settle with the merchant (statements only).',
+      ),
+    autoPauseOnFraud: z
+      .boolean()
+      .default(false)
+      .describe('Pause automatically when a fraud alert points at this campaign'),
     /** Share of eligible cards kept without the discount to measure uplift (max 20%). */
-    holdoutBps: z.number().int().min(0).max(2_000).default(0),
+    holdoutBps: z
+      .number()
+      .int()
+      .min(0)
+      .max(2_000)
+      .default(0)
+      .describe(
+        'Share of eligible cards kept without the discount to measure uplift, basis points (max 2000 = 20%)',
+      ),
     /** A/B variants; empty = no test. Variant A is the control and becomes the campaign discount. */
     variants: z
       .array(
@@ -61,7 +97,10 @@ export const campaignInput = z
         }),
       )
       .max(3)
-      .default([]),
+      .default([])
+      .describe(
+        'A/B variants (A required, B, C); weights must total 10000. Empty = no test. Variant A is the control and becomes the campaign discount.',
+      ),
   })
   .transform((c) => ({
     ...c,

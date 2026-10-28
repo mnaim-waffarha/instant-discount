@@ -155,6 +155,13 @@ VAT config per country (EG 14%, KSA 15% — to confirm with finance), invoice nu
 
 ### Progress
 
+- **API documentation — done.** OpenAPI 3.1 for all 79 endpoints (acquirer, admin/portal, ops)
+  generated from the code: routes, roles and status codes from the Nest metadata, request schemas
+  from the same Zod objects that validate them, record shapes from the Prisma schema. An
+  integration test validates 50+ real responses against the specs; CI fails when `docs/api` is
+  stale. Readable HTML reference (Redoc) and an endpoint table in `docs/api/`.
+- **Brand refresh — done.** Secondary palette (dark blue 7687 C) across the web app, Poppins for
+  Latin text; the logo keeps the primary orange.
 - **Phase 6 — done.** Holdout groups (0–20 % of eligible cards get a plain
   `NO_ELIGIBLE_CAMPAIGN`, so the acquirer can't tell) and A/B variants (up to 3, differing in
   discount level, type or minimum spend). Assignment is deterministic per card

@@ -9,6 +9,8 @@
     "start:worker": "node dist/worker.js",
     "dev": "tsx watch src/main.ts",
     "test": "vitest run",
+    "docs:api": "bash scripts/api-docs.sh",
+    "docs:check": "bash scripts/api-docs.sh --check",
     "seed": "tsx scripts/seed.ts",
     "sim": "tsx scripts/sim-acquirer.ts",
     "load": "tsx scripts/load-test.ts"
@@ -35,7 +37,9 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@nestjs/testing": "^11.1.0",
+    "@redocly/cli": "^2.71.2",
     "@swc/core": "^1.7.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
@@ -43,8 +47,12 @@
     "@types/nodemailer": "^6.4.24",
     "@types/pdfkit": "^0.13.9",
     "@types/supertest": "^6.0.2",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "redoc": "2.5.0",
     "supertest": "^7.0.0",
     "tsx": "^4.19.0",
-    "unplugin-swc": "^1.5.1"
+    "unplugin-swc": "^1.5.1",
+    "yaml": "^2.9.1"
   }
 }

@@ -1,3 +1,10 @@
 pnpm-lock.yaml
 **/dist
 deploy/helm/**/templates
+# Generated API docs (checked by `pnpm --filter @instant-discount/api docs:check` instead)
+docs/api/*.yaml
+docs/api/*.html
+docs/api/endpoints.md
+!docs/api/redocly.yaml
+!docs/api/index.html
+docs/api/redoc.standalone.js*

@@ -33,6 +33,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @instant-discount/db validate
       - run: pnpm turbo run build typecheck test
+      # Fails if docs/api differs from what the code generates.
+      - run: pnpm turbo run docs:check
 
   chart:
     runs-on: ubuntu-latest
