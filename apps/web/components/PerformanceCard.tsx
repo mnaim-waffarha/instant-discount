@@ -7,12 +7,15 @@ import { useI18n } from '@/lib/i18n';
 import type { PerformanceGroup, PerformanceReport } from '@/lib/types';
 import { Card, Empty, ErrorBox, Loading } from './ui';
 
-/** Holdout is the untreated baseline, so it is neutral gray; variants keep fixed hues. */
+/**
+ * Holdout is the untreated baseline, so it is neutral gray; variants keep fixed hues from the
+ * secondary palette (7687 C, 7702 C, 151 C), stepped to pass the chart palette checks.
+ */
 const COLORS: Record<string, string> = {
   HOLDOUT: '#8A919E',
-  A: '#FE5F00',
-  B: '#2F6BC9',
-  C: '#C99400',
+  A: '#2C59B0',
+  B: '#1E9FCC',
+  C: '#F57A00',
 };
 
 /**

@@ -118,7 +118,8 @@ const tones: Record<Tone, string> = {
   ok: 'bg-ok-bg text-ok border-ok/20',
   warn: 'bg-warn-bg text-warn border-warn/20',
   bad: 'bg-bad-bg text-bad border-bad/20',
-  navy: 'bg-navy/5 text-navy border-navy/20',
+  // Light blue, so it stays distinct from the dark-blue brand tone.
+  navy: 'bg-sky-50 text-sky-ink border-sky/30',
 };
 
 export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: ReactNode }) {

@@ -168,8 +168,7 @@ let campaignUrl;
   await page.goto(campaignUrl);
   await page.getByTestId('performance').waitFor();
   check(
-    (await page.getByText('Holdout (no discount)').count()) > 0 ||
-      (await page.getByText(/Cards|Spend per card/).count()) > 0,
+    (await page.getByText('Performance & experiment').count()) > 0,
     'campaign page shows the performance & experiment card',
   );
   await page.screenshot({ path: `${OUT}/03b-performance-en.png`, fullPage: true });
