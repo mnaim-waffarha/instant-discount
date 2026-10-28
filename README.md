@@ -5,7 +5,8 @@ service whether a campaign applies. If one does, the POS charges the discounted 
 If none does, or the service doesn't answer within ~800 ms, the full amount is charged.
 
 - [docs/PLAN.md](docs/PLAN.md): requirements, architecture, roadmap and progress
-- [docs/api/acquirer-v1.yaml](docs/api/acquirer-v1.yaml): the API acquirers integrate with (OpenAPI 3)
+- [docs/api/](docs/api/README.md): full API documentation generated from the code: OpenAPI 3.1 for the acquirer, admin/portal and ops APIs, an endpoint table and an HTML reference ([`index.html`](docs/api/index.html))
+- [CLAUDE.md](CLAUDE.md): working rules (checks, PR to `main` after each task, conventions)
 - [docs/acquirer-integration-guide.md](docs/acquirer-integration-guide.md): onboarding, signing examples, failure handling, certification
 - [docs/pilot-runbook.md](docs/pilot-runbook.md): go-live checklist, kill-switch drill, month end, incidents
 - [deploy/README.md](deploy/README.md): Kubernetes + Argo CD deployment, secrets, CI/CD, rollback

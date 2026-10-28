@@ -1,5 +1,7 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import {} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { FormModal } from '@/components/FormModal';
@@ -114,7 +116,7 @@ export default function SettlementsPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2" title={t('settle.documents')}>
           <ErrorBox error={docs.error} onRetry={docs.reload} />
-          <div className="-m-5">
+          <div className="-m-4 sm:-m-5">
             {docs.loading && !docs.data ? (
               <Loading />
             ) : (
@@ -193,6 +195,7 @@ export default function SettlementsPage() {
             actions={
               isFinance && (
                 <Button
+                  icon={Plus}
                   size="sm"
                   variant="secondary"
                   onClick={() =>

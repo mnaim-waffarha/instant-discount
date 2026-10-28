@@ -1,0 +1,16 @@
+# Lint and build config for the generated API docs (run via `pnpm --filter @instant-discount/api docs:api`).
+extends:
+  - recommended
+rules:
+  # Proprietary API: there is no public license URL.
+  info-license-strict: off
+apis:
+  acquirer@v1:
+    root: acquirer-v1.yaml
+  admin@v1:
+    root: admin-v1.yaml
+  ops:
+    root: ops.yaml
+    rules:
+      # Probes and metrics have no client errors to describe.
+      operation-4xx-response: off

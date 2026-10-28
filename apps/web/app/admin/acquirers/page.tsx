@@ -1,5 +1,7 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import {} from 'lucide-react';
 import { useState } from 'react';
 import { FormModal } from '@/components/FormModal';
 import {
@@ -42,7 +44,7 @@ export default function AcquirersPage() {
         title={t('acquirers.title')}
         actions={
           isAdmin && (
-            <Button onClick={() => setForm({ name: '', country: 'EG', ips: '' })}>
+            <Button icon={Plus} onClick={() => setForm({ name: '', country: 'EG', ips: '' })}>
               {t('acquirers.new')}
             </Button>
           )
@@ -50,7 +52,7 @@ export default function AcquirersPage() {
       />
       <Card>
         <ErrorBox error={list.error} onRetry={list.reload} />
-        <div className="-m-5">
+        <div className="-m-4 sm:-m-5">
           {list.loading && !list.data ? (
             <Loading />
           ) : (

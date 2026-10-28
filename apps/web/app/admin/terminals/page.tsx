@@ -1,5 +1,7 @@
 'use client';
 
+import { Plus, Upload } from 'lucide-react';
+import {} from 'lucide-react';
 import { useState } from 'react';
 import { FormModal } from '@/components/FormModal';
 import {
@@ -76,6 +78,7 @@ export default function TerminalsPage() {
           can(...EDITORS) && (
             <>
               <Button
+                icon={Upload}
                 variant="secondary"
                 onClick={() => {
                   setImporting(true);
@@ -86,6 +89,7 @@ export default function TerminalsPage() {
                 {t('terminals.import')}
               </Button>
               <Button
+                icon={Plus}
                 onClick={() =>
                   setForm({
                     acquirerId: '',
@@ -113,7 +117,7 @@ export default function TerminalsPage() {
           }}
         />
         <ErrorBox error={list.error} onRetry={list.reload} />
-        <div className="-mx-5 -mb-5">
+        <div className="-mx-4 sm:-mx-5 -mb-5">
           {list.loading && !list.data ? (
             <Loading />
           ) : (

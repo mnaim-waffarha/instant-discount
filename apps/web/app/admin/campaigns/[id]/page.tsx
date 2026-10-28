@@ -1,5 +1,23 @@
 'use client';
 
+import {
+  BarChart3,
+  CheckCircle2,
+  Copy,
+  CreditCard,
+  Pause,
+  Pencil,
+  Play,
+  Send,
+  Settings2,
+  Square,
+  Store,
+  ThumbsDown,
+  ThumbsUp,
+  Undo2,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { use, useState } from 'react';
@@ -12,6 +30,7 @@ import {
   Card,
   Empty,
   ErrorBox,
+  IconChip,
   LinkButton,
   Loading,
   Meter,
@@ -86,18 +105,19 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
         actions={
           <>
             {editable && (
-              <LinkButton variant="secondary" href={`/admin/campaigns/${id}/edit`}>
+              <LinkButton variant="secondary" icon={Pencil} href={`/admin/campaigns/${id}/edit`}>
                 {t('common.edit')}
               </LinkButton>
             )}
             {can(...EDITORS) && c.status === 'DRAFT' && (
-              <Button loading={busy === 'submit'} onClick={() => void act('submit')}>
+              <Button icon={Send} loading={busy === 'submit'} onClick={() => void act('submit')}>
                 {t('campaign.submit')}
               </Button>
             )}
             {can(...EDITORS) && c.status === 'PENDING_APPROVAL' && (
               <Button
                 variant="secondary"
+                icon={Undo2}
                 loading={busy === 'withdraw'}
                 onClick={() => void act('withdraw')}
               >
@@ -105,18 +125,23 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
               </Button>
             )}
             {canDecide && (
-              <Button loading={busy === 'approve'} onClick={() => void act('approve')}>
+              <Button
+                icon={ThumbsUp}
+                loading={busy === 'approve'}
+                onClick={() => void act('approve')}
+              >
                 {t('campaign.approve')}
               </Button>
             )}
             {canDecide && (
-              <Button variant="danger" onClick={() => setRejecting(true)}>
+              <Button variant="danger" icon={ThumbsDown} onClick={() => setRejecting(true)}>
                 {t('campaign.reject')}
               </Button>
             )}
             {can(...EDITORS, 'APPROVER') && (c.status === 'ACTIVE' || c.status === 'SCHEDULED') && (
               <Button
                 variant="secondary"
+                icon={Pause}
                 loading={busy === 'pause'}
                 onClick={() => void act('pause')}
               >
@@ -124,18 +149,23 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
               </Button>
             )}
             {can(...EDITORS, 'APPROVER') && c.status === 'PAUSED' && (
-              <Button loading={busy === 'resume'} onClick={() => void act('resume')}>
+              <Button icon={Play} loading={busy === 'resume'} onClick={() => void act('resume')}>
                 {t('campaign.resume')}
               </Button>
             )}
             {can(...EDITORS, 'APPROVER') &&
               ['SCHEDULED', 'ACTIVE', 'PAUSED'].includes(c.status) && (
-                <Button variant="danger" onClick={() => setEnding(true)}>
+                <Button variant="danger" icon={Square} onClick={() => setEnding(true)}>
                   {t('campaign.end')}
                 </Button>
               )}
             {can(...EDITORS) && (
-              <Button variant="ghost" loading={busy === 'clone'} onClick={() => void act('clone')}>
+              <Button
+                variant="ghost"
+                icon={Copy}
+                loading={busy === 'clone'}
+                onClick={() => void act('clone')}
+              >
                 {t('campaign.clone')}
               </Button>
             )}
@@ -168,27 +198,34 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
           <p className="text-sm text-ink-muted">{t('campaign.makerNote')}</p>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="card p-4">
-            <div className="text-xs text-ink-muted">{t('campaign.budget')}</div>
-            <div className="mt-1 text-lg font-semibold ltr text-start">
-              {s ? formatMoney(s.budget.usedMinor, c.currency, locale) : '—'}{' '}
-              <span className="text-sm font-normal text-ink-muted">
-                / {money(s?.budget.totalMinor)}
-              </span>
-            </div>
-            <div className="mt-2">
-              <Meter pct={s?.budget.usedPct ?? null} />
-            </div>
-            <div className="mt-1 text-xs text-ink-faint">
-              {t('campaign.remaining')}: {money(s?.budget.remainingMinor)}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <div className="card col-span-2 flex items-start gap-3 p-4 xl:col-span-1">
+            <IconChip icon={Wallet} />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-ink-muted">{t('campaign.budget')}</div>
+              <div className="mt-1 text-lg font-semibold ltr text-start">
+                {s ? formatMoney(s.budget.usedMinor, c.currency, locale) : '—'}{' '}
+                <span className="text-sm font-normal text-ink-muted">
+                  / {money(s?.budget.totalMinor)}
+                </span>
+              </div>
+              <div className="mt-2">
+                <Meter pct={s?.budget.usedPct ?? null} />
+              </div>
+              <div className="mt-1 text-xs text-ink-faint">
+                {t('campaign.remaining')}: {money(s?.budget.remainingMinor)}
+              </div>
             </div>
           </div>
           <Stat
+            icon={Users}
+            tone="sky"
             label={t('campaign.uniqueCards')}
             value={`${formatNumber(s?.uniqueCards.used ?? 0, locale)} / ${n(c.maxUniqueCards)}`}
           />
           <Stat
+            icon={CreditCard}
+            tone="tangerine"
             label={t('campaign.redemptions')}
             value={formatNumber(
               (s?.redemptionsByStatus.CONFIRMED ?? 0) +
@@ -203,6 +240,8 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
             }
           />
           <Stat
+            icon={CheckCircle2}
+            tone="ok"
             label={t('campaign.confirmRate')}
             value={
               s?.confirmRate === null || s?.confirmRate === undefined ? '—' : `${s.confirmRate}%`
@@ -211,14 +250,14 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="lg:col-span-2" title={t('campaign.daily')}>
+          <Card className="lg:col-span-2" title={t('campaign.daily')} icon={BarChart3}>
             {s && s.daily.length > 0 ? (
               <DailyChart data={s.daily} currency={c.currency} timeZone={c.timezone} />
             ) : (
               <Empty>{t('campaign.noData')}</Empty>
             )}
           </Card>
-          <Card title={t('campaign.topTerminals')}>
+          <Card title={t('campaign.topTerminals')} icon={Store} tone="sky">
             {s && s.topTerminals.length > 0 ? (
               <ul className="space-y-2 text-sm">
                 {s.topTerminals.map((term) => (
@@ -244,7 +283,7 @@ export default function CampaignPage({ params }: { params: Promise<{ id: string 
           />
         )}
 
-        <Card title={t('campaign.configuration')}>
+        <Card title={t('campaign.configuration')} icon={Settings2} tone="neutral">
           <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
             {(
               [

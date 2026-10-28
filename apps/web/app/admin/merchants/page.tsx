@@ -1,5 +1,7 @@
 'use client';
 
+import { Plus } from 'lucide-react';
+import {} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { FormModal } from '@/components/FormModal';
@@ -44,6 +46,7 @@ export default function MerchantsPage() {
         actions={
           can(...EDITORS) && (
             <Button
+              icon={Plus}
               onClick={() =>
                 setForm({ partnerId: '', name: '', nameAr: '', country: 'EG', mcc: '' })
               }
@@ -64,7 +67,7 @@ export default function MerchantsPage() {
           }}
         />
         <ErrorBox error={list.error} onRetry={list.reload} />
-        <div className="-mx-5 -mb-5">
+        <div className="-mx-4 sm:-mx-5 -mb-5">
           {list.loading && !list.data ? (
             <Loading />
           ) : (

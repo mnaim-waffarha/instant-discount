@@ -126,7 +126,7 @@ export default function DocumentPage({ params }: { params: Promise<{ id: string 
           ))}
         </div>
         <Card title={t('settle.lines')}>
-          <div className="-m-5">
+          <div className="-m-4 sm:-m-5">
             <Table
               rows={d.lines ?? []}
               rowKey={(l) => l.id}

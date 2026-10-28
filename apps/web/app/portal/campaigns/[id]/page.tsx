@@ -57,7 +57,7 @@ export default function PortalCampaign({ params }: { params: Promise<{ id: strin
       </div>
       <Card title={t('portal.payments')}>
         <ErrorBox error={rows.error} />
-        <div className="-m-5">
+        <div className="-m-4 sm:-m-5">
           {rows.loading && !rows.data ? (
             <Loading />
           ) : (
