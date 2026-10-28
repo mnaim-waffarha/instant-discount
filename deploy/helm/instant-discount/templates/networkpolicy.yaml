@@ -1,0 +1,47 @@
+{{- if .Values.networkPolicy.enabled }}
+# The API accepts traffic only from the ingress controller (acquirers), the web pods (admin
+# proxy) and Prometheus. Egress stays open: Postgres and Redis are managed outside the cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "id.fullname" . }}-api
+  labels:
+    {{- include "id.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "id.selector" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}
+        - podSelector:
+            matchLabels:
+              {{- include "id.selector" (dict "root" . "component" "web") | nindent 14 }}
+      ports:
+        - { port: {{ .Values.api.port }}, protocol: TCP }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "id.fullname" . }}-worker
+  labels:
+    {{- include "id.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "id.selector" (dict "root" . "component" "worker") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}
+      ports:
+        - { port: {{ .Values.worker.port }}, protocol: TCP }
+{{- end }}

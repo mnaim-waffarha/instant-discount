@@ -6,12 +6,16 @@
     "validate": "prisma validate",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy"
+    "migrate:deploy": "prisma migrate deploy",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "prisma": "^5.22.0"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
-  }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts"
 }

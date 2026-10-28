@@ -1,0 +1,27 @@
+# Staging. Image digests below are updated automatically by .github/workflows/release.yml
+# on every push to main; Argo CD syncs this file.
+image:
+  registry: registry.example.com/instant-discount
+
+api:
+  image: { repository: api, tag: bootstrap, digest: '' }
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 60 }
+
+web:
+  image: { repository: web, tag: bootstrap, digest: '' }
+  replicas: 1
+  pdb: { minAvailable: 0 }
+
+config:
+  WEB_BASE_URL: https://instant-discount.staging.example.com
+  BOOTSTRAP_ADMIN_EMAILS: ''
+
+ingress:
+  acquirer:
+    host: acquirer.instant-discount.staging.example.com
+    annotations:
+      nginx.ingress.kubernetes.io/auth-tls-secret: instant-discount-staging/acquirer-client-ca
+  web:
+    host: instant-discount.staging.example.com
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt

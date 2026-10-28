@@ -80,6 +80,24 @@ enum InvoiceStatus {
   VOID
 }
 
+enum SettlementMode {
+  // Waffarha invoices external funders and pays the merchant their shares.
+  WAFFARHA_COLLECTS
+  // Funders settle with the merchant directly; the system issues statements only.
+  DIRECT
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+}
+
 enum UserRole {
   ADMIN
   CAMPAIGN_MANAGER
@@ -201,15 +219,33 @@ model Campaign {
   perCardMaxAmountMinor BigInt?
   perCardPeriod         LimitPeriod?
 
-  createdById  String?
-  approvedById String?
-  approvedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  settlementMode   SettlementMode @default(WAFFARHA_COLLECTS)
+  // Pause automatically when a fraud alert points at this campaign.
+  autoPauseOnFraud Boolean        @default(false)
+  // Share of eligible cards (bps) deliberately left without the discount, to measure uplift.
+  holdoutBps       Int            @default(0)
+  // Randomises experiment assignment per campaign (a clone gets a new one).
+  experimentSalt   String         @default(uuid())
+
+  createdById     String?
+  updatedById     String?
+  submittedById   String?
+  submittedAt     DateTime?
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  pausedAt        DateTime?
+  // Proposed edits to a campaign that is already approved; applied on approval.
+  pendingChanges  Json?
+  pendingById     String?
+  pendingAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   fundings    CampaignFunding[]
   versions    CampaignVersion[]
   redemptions Redemption[]
+  variants    CampaignVariant[]
 
   @@index([status, country, startAt, endAt])
 }
@@ -258,11 +294,15 @@ model Redemption {
   discountMinor         BigInt
   finalAmountMinor      BigInt
   refundedDiscountMinor BigInt           @default(0)
+  // Portion of finalAmount (what the customer paid) refunded so far.
+  refundedAmountMinor   BigInt           @default(0)
   // [{ partnerId, shareBps, amountMinor }] captured at reservation time.
   fundingSnapshot       Json
   // Period bucket keys used for the Redis counters, needed to release them exactly.
   counterKeys           Json
   status                RedemptionStatus @default(RESERVED)
+  // A/B variant the card was assigned to (null when the campaign has no variants).
+  variantKey            String?
   authCode              String?
   expiresAt             DateTime
   confirmedAt           DateTime?
@@ -289,8 +329,11 @@ model RedemptionEvent {
   amountMinor        BigInt?
   payload            Json?
   createdAt          DateTime            @default(now())
+  // Set once the settlement ledger has processed this event.
+  ledgerProcessedAt  DateTime?
 
   @@index([redemptionId])
+  @@index([ledgerProcessedAt, type])
 }
 
 // Every inquiry, including "no discount", for analytics and support. Partition monthly in production.
@@ -300,6 +343,8 @@ model InquiryLog {
   terminalId     String?
   acquirerTxnRef String
   bin            String
+  // Hashed card token (same hash as redemptions), for velocity and fraud signals.
+  cardTokenHash  String?
   amountMinor    BigInt
   currency       Currency
   eligible       Boolean
@@ -313,13 +358,68 @@ model InquiryLog {
 
   @@index([createdAt])
   @@index([campaignId, createdAt])
+  @@index([cardTokenHash, createdAt])
+  @@index([terminalId, createdAt])
+}
+
+enum DocumentType {
+  // A funder (e.g. a bank) owes Waffarha its share (WAFFARHA_COLLECTS campaigns). VAT applies.
+  INVOICE
+  // Waffarha owes the merchant the funders' shares (WAFFARHA_COLLECTS campaigns).
+  PAYOUT_STATEMENT
+  // DIRECT campaigns: who owes whom, settled outside Waffarha.
+  STATEMENT
+}
+
+enum DocumentLineKind {
+  // The document's partner funded this much discount (it owes it).
+  FUNDED_SHARE
+  // A funder owes the document's partner (the merchant) this much.
+  OWED_BY_FUNDER
+  // The merchant's own contribution; informational, not payable.
+  OWN_CONTRIBUTION
+}
+
+// One partner's share of one redemption event: +share on confirmation, -share on a
+// refund or a cancel after confirmation. Derived from RedemptionEvent; idempotent per event.
+model SettlementEntry {
+  id                 String         @id @default(uuid())
+  redemptionEventId  String
+  redemptionId       String
+  campaignId         String
+  settlementMode     SettlementMode
+  // The funder whose share this is.
+  partnerId          String
+  partnerType        PartnerType
+  // The merchant partner whose terminal took the payment.
+  merchantPartnerId  String
+  country            Country
+  currency           Currency
+  // Signed, minor units.
+  amountMinor        BigInt
+  // +1 for a confirmation, -1 for a full reversal, 0 for a partial refund (count unchanged).
+  countDelta         Int
+  eventAt            DateTime
+  // Document of the funder side (INVOICE, or STATEMENT in DIRECT mode).
+  funderDocumentId   String?
+  // Document of the merchant side (PAYOUT_STATEMENT, or STATEMENT in DIRECT mode).
+  merchantDocumentId String?
+  createdAt          DateTime       @default(now())
+
+  @@unique([redemptionEventId, partnerId])
+  @@index([country, eventAt])
+  @@index([partnerId, eventAt])
+  @@index([merchantPartnerId, eventAt])
 }
 
 model Invoice {
   id            String        @id @default(uuid())
-  number        String        @unique
+  type          DocumentType
+  // Assigned when issued: INV-EG-2026-000001, PAY-…, STM-…
+  number        String?       @unique
   partnerId     String
   partner       Partner       @relation(fields: [partnerId], references: [id])
+  country       Country
   currency      Currency
   periodStart   DateTime
   periodEnd     DateTime
@@ -331,35 +431,95 @@ model Invoice {
   issuedAt      DateTime?
   dueAt         DateTime?
   paidAt        DateTime?
+  paymentRef    String?
+  voidReason    String?
   createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   lines InvoiceLine[]
 
-  @@unique([partnerId, currency, periodStart])
+  @@index([partnerId, periodStart])
+  @@index([status])
 }
 
 model InvoiceLine {
-  id                    String  @id @default(uuid())
+  id                    String           @id @default(uuid())
   invoiceId             String
-  invoice               Invoice @relation(fields: [invoiceId], references: [id])
+  invoice               Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  kind                  DocumentLineKind
   campaignId            String
+  campaignName          String
+  // For OWED_BY_FUNDER lines: the funder. For FUNDED_SHARE lines: the merchant paid.
+  counterpartyPartnerId String?
+  counterpartyName      String?
   redemptionCount       Int
-  grossDiscountMinor    BigInt
-  refundedDiscountMinor BigInt
-  partnerShareMinor     BigInt
+  grossMinor            BigInt
+  reversedMinor         BigInt
+  netMinor              BigInt
+}
+
+// Gap-free document numbers per prefix, country and year.
+model DocumentSequence {
+  prefix  String
+  country Country
+  year    Int
+  value   Int     @default(0)
+
+  @@id([prefix, country, year])
+}
+
+// VAT applied to INVOICE documents, per country. The latest rate valid at the period end applies.
+model TaxRate {
+  id        String   @id @default(uuid())
+  country   Country
+  rateBps   Int
+  validFrom DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([country, validFrom])
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  role         UserRole
+  id          String    @id @default(uuid())
+  email       String    @unique
+  name        String
+  role        UserRole
+  // Staff sign in with Google; set on first login.
+  googleSub   String?   @unique
   // Set only for PARTNER_USER — scopes the partner portal.
-  partnerId    String?
-  partner      Partner? @relation(fields: [partnerId], references: [id])
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  partnerId   String?
+  partner     Partner?  @relation(fields: [partnerId], references: [id])
+  locale      String    @default("en")
+  active      Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  sessions Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  // SHA-256 of the cookie token; the token itself is never stored.
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model MagicLinkToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
 }
 
 model AuditLog {
@@ -373,4 +533,64 @@ model AuditLog {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+// Something operations should know about. `dedupeKey` makes each condition fire once.
+model Alert {
+  id             String        @id @default(uuid())
+  type           String
+  severity       AlertSeverity
+  status         AlertStatus   @default(OPEN)
+  title          String
+  message        String
+  dedupeKey      String        @unique
+  campaignId     String?
+  terminalId     String?
+  data           Json?
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  createdAt      DateTime      @default(now())
+
+  @@index([status, createdAt])
+}
+
+// Runtime settings (kill switch, guardrails, alert thresholds), editable by admins.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+// A/B variant of a campaign's discount. Variant A is the control and mirrors Campaign.discountConfig.
+model CampaignVariant {
+  id             String       @id @default(uuid())
+  campaignId     String
+  campaign       Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  key            String
+  name           String
+  // Share of non-holdout cards, in bps; a campaign's variants sum to 10000.
+  weightBps      Int
+  discountType   DiscountType
+  discountConfig Json
+
+  @@unique([campaignId, key])
+}
+
+// One row per inquiry per campaign the card was eligible for, with its experiment group.
+// Written off the payment path; the basis for uplift and A/B reports.
+model CampaignExposure {
+  id                String   @id @default(uuid())
+  campaignId        String
+  // HOLDOUT, or the variant key (A when the campaign has no variants).
+  group             String
+  cardTokenHash     String
+  amountMinor       BigInt
+  currency          Currency
+  merchantPartnerId String
+  redemptionId      String?
+  createdAt         DateTime @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([campaignId, group, cardTokenHash])
 }

@@ -1,0 +1,23 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "id.fullname" . }}
+  labels:
+    {{- include "id.labels" . | nindent 4 }}
+spec:
+  # api and worker expose /metrics; the web app does not.
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+    matchExpressions:
+      - { key: app.kubernetes.io/component, operator: In, values: [api, worker] }
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.serviceMonitor.interval }}
+      bearerTokenSecret:
+        name: {{ .Values.existingSecret }}
+        key: METRICS_TOKEN
+        optional: true
+{{- end }}

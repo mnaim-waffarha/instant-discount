@@ -1,0 +1,84 @@
+{{- $name := printf "%s-web" (include "id.fullname" .) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "id.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  revisionHistoryLimit: 5
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      {{- include "id.selector" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "id.selector" (dict "root" . "component" "web") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.image.pullSecret }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: web
+          image: {{ include "id.image" (dict "root" . "image" .Values.web.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: {{ .Values.web.port }} }
+          env:
+            - { name: PORT, value: {{ .Values.web.port | quote }} }
+            - { name: HOSTNAME, value: "0.0.0.0" }
+            # In-cluster: the browser never talks to the API directly.
+            - { name: API_URL, value: "http://{{ include "id.fullname" . }}-api:{{ .Values.api.port }}" }
+            - { name: DEV_LOGIN, value: {{ .Values.config.DEV_LOGIN | quote }} }
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.existingSecret }}, key: GOOGLE_CLIENT_ID, optional: true }
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          livenessProbe:
+            httpGet: { path: /runtime-config, port: http }
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /runtime-config, port: http }
+            periodSeconds: 5
+          {{- include "id.preStop" . | nindent 10 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: next-cache, mountPath: /app/apps/web/.next/cache }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: next-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "id.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    {{- include "id.selector" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.web.port }}, targetPort: http }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "id.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.web.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "id.selector" (dict "root" . "component" "web") | nindent 6 }}

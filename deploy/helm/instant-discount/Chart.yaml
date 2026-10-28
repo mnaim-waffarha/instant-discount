@@ -1,0 +1,6 @@
+apiVersion: v2
+name: instant-discount
+description: Waffarha Instant Discount — acquirer API, background worker and admin/partner web app
+type: application
+version: 0.1.0
+appVersion: '0.1.0'

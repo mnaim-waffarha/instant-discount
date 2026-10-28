@@ -1,0 +1,42 @@
+# Argo CD applications for staging: the Helm chart and the sealed secrets.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: instant-discount-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mnaim-waffarha/instant-discount.git
+    targetRevision: main
+    path: deploy/helm/instant-discount
+    helm:
+      releaseName: instant-discount
+      valueFiles:
+        - ../../environments/staging/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: instant-discount-staging
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: instant-discount-staging-secrets
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mnaim-waffarha/instant-discount.git
+    targetRevision: main
+    path: deploy/environments/staging/secrets
+    directory:
+      include: '*.sealed.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: instant-discount-staging
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
