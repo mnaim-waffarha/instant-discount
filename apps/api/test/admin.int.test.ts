@@ -223,6 +223,45 @@ describe('merchant network', () => {
   });
 });
 
+describe('branch import', () => {
+  it('validates a branch file first, writes nothing if any row fails, then imports', async () => {
+    const m = await loginAs(h.app, MANAGER);
+    const url = `/admin/v1/merchants/${h.net.merchant.id}/branches/import`;
+    // "Zamalek" already exists in the demo network; row 4 repeats row 2.
+    const bad = 'name,city\nMaadi,Cairo\nZamalek,Cairo\nmaadi,\n';
+    const dry = (await m.post(url).send({ csv: bad, dryRun: false })).body;
+    expect(dry).toMatchObject({ dryRun: true, valid: 1, imported: 0 });
+    expect(dry.errors.map((e: { line: number }) => e.line)).toEqual([3, 4]);
+    expect(await h.prisma.branch.count({ where: { merchantId: h.net.merchant.id } })).toBe(1);
+
+    const good = 'name,city\nMaadi,Cairo\nNasr City,Cairo\nOlaya,Riyadh\n';
+    expect((await m.post(url).send({ csv: good })).body).toMatchObject({ dryRun: true, valid: 3 });
+    expect((await m.post(url).send({ csv: good, dryRun: false })).body).toMatchObject({
+      imported: 3,
+    });
+    const names = (
+      await h.prisma.branch.findMany({ where: { merchantId: h.net.merchant.id } })
+    ).map((b) => b.name);
+    expect(names.sort()).toEqual(['Maadi', 'Nasr City', 'Olaya', 'Zamalek']);
+    expect(
+      await h.prisma.auditLog.count({
+        where: { action: 'branch.import', entityId: h.net.merchant.id },
+      }),
+    ).toBe(1);
+
+    // Viewers cannot import; unknown merchants are a 404.
+    const v = await loginAs(h.app, VIEWER);
+    expect((await v.post(url).send({ csv: good })).status).toBe(403);
+    expect(
+      (
+        await m
+          .post('/admin/v1/merchants/00000000-0000-4000-8000-000000000000/branches/import')
+          .send({ csv: good })
+      ).body.error.code,
+    ).toBe('MERCHANT_NOT_FOUND');
+  });
+});
+
 describe('acquirers', () => {
   it('shows the secret once, and the new acquirer can call the API with it', async () => {
     const admin = await loginAs(h.app, ADMIN);

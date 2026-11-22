@@ -676,7 +676,12 @@ function Stepper({ step, onStep }: { step: number; onStep: (i: number) => void }
               }`}
             >
               <Icon className="h-3.5 w-3.5" aria-hidden />
-              <span className="ltr">{i + 1}.</span> {t(s)}
+              <span
+                className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] leading-none ${current ? 'bg-white/20' : 'bg-canvas'}`}
+              >
+                {i + 1}
+              </span>
+              {t(s)}
             </button>
           );
         })}

@@ -364,6 +364,14 @@ describe('responses match the API docs', () => {
     expectDocumented(
       'admin',
       'POST',
+      '/admin/v1/merchants/{id}/branches/import',
+      await admin
+        .post(`/admin/v1/merchants/${h.net.merchant.id}/branches/import`)
+        .send({ csv: 'name,city\nDocs Branch,Cairo', dryRun: true }),
+    );
+    expectDocumented(
+      'admin',
+      'POST',
       '/admin/v1/users',
       await admin
         .post('/admin/v1/users')

@@ -436,6 +436,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     response: page(
       withFields('Merchant', {
         partner: pick('Partner', ['id', 'name']),
+        branches: arr(pick('Branch', ['id', 'name'])),
         _count: obj({ branches: { type: 'integer' }, terminals: { type: 'integer' } }),
       }),
     ),
@@ -467,6 +468,16 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     summary: 'Add a branch',
     response: ref('Branch'),
     errors: notFound('MERCHANT_NOT_FOUND'),
+  },
+  'POST /admin/v1/merchants/:id/branches/import': {
+    spec: 'admin',
+    tag: 'Network',
+    summary: 'Bulk-add branches from CSV',
+    description:
+      'CSV columns: `name` (required) and `city` (header row required). Names must be unique in the file and new for this merchant (case-insensitive). `dryRun` defaults to true. Nothing is written if any row has an error. The web app also accepts Excel files and converts them to this CSV.',
+    response: ref('ImportResult'),
+    errors: notFound('MERCHANT_NOT_FOUND'),
+    requestExample: { csv: 'name,city\nMaadi,Cairo\nOlaya,Riyadh', dryRun: true },
   },
   'GET /admin/v1/terminals': {
     spec: 'admin',
@@ -503,7 +514,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     summary: 'Bulk-import terminals from CSV',
     description:
       'CSV columns: `acquirer_api_key,tid,merchant_id,branch_id,mcc` (header row required). `dryRun` defaults to true. Nothing is written if any row has an error.',
-    response: ref('TerminalImportResult'),
+    response: ref('ImportResult'),
     requestExample: {
       csv: 'acquirer_api_key,tid,merchant_id,branch_id,mcc\nacq_demo,TID0002,0b6f1c2e-0000-4000-8000-000000000001,,5812',
       dryRun: true,

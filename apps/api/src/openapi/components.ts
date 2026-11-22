@@ -242,7 +242,7 @@ export const COMPONENTS: Record<string, Schema> = {
     reasons: arr(obj({ reason: nullable(str()), count: int() })),
     latencyMs: obj({ p50: nullable(num()), p95: nullable(num()), p99: nullable(num()) }),
   }),
-  TerminalImportResult: obj({
+  ImportResult: obj({
     dryRun: bool('true when nothing was written (dry run, or any row had an error)'),
     valid: int(),
     errors: arr(obj({ line: int(), message: str() })),
