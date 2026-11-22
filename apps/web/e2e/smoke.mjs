@@ -300,7 +300,39 @@ let campaignUrl;
   await context.close();
 }
 
-// 8. Partner users are kept out of admin.
+// 8. A campaign manager bulk-uploads branches for a merchant (CSV; Excel is covered by the
+// same component). A second upload of the same file is rejected row by row.
+{
+  const { writeFileSync } = await import('node:fs');
+  const file = `${OUT}/branches-${Date.now()}.csv`;
+  const tag = Date.now().toString().slice(-6);
+  writeFileSync(file, `name,city\nE2E Branch A ${tag},Cairo\nE2E Branch B ${tag},Giza\n`);
+  const { context, page } = await signIn('manager@waffarha.com');
+  await page.goto(`${BASE}/admin/merchants`);
+  await page.getByText('Demo Cafe', { exact: true }).first().click();
+  await page.waitForURL(/merchants\/[0-9a-f-]{36}/);
+  await page.getByRole('button', { name: 'Upload branches' }).click();
+  await page.getByTestId('bulk-upload-input').setInputFiles(file);
+  await page.getByText('All rows are ready to import (2).').waitFor();
+  await page.getByRole('button', { name: 'Import rows (2)' }).click();
+  await page.getByText('Rows imported: 2.').waitFor();
+  await page.getByRole('button', { name: 'Upload another file' }).click();
+  await page.getByTestId('bulk-upload-input').setInputFiles(file);
+  await page.getByTestId('bulk-upload-errors').waitFor();
+  check(
+    /already exists/.test(await page.getByTestId('bulk-upload-errors').innerText()),
+    'manager bulk-uploads branches; duplicates are rejected',
+  );
+  await page.getByRole('button', { name: 'Close' }).last().click();
+  check(
+    (await page.getByText(`E2E Branch B ${tag}`).count()) > 0,
+    'uploaded branches appear on the merchant page',
+  );
+  await page.screenshot({ path: `${OUT}/14-branches-en.png`, fullPage: true });
+  await context.close();
+}
+
+// 9. Partner users are kept out of admin.
 {
   const context = await browser.newContext();
   const page = await context.newPage();

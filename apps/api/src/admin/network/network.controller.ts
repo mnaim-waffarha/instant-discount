@@ -8,6 +8,7 @@ import { AdminAuthGuard, CurrentUser } from '../auth/admin-auth.guard';
 import { EDITORS, Roles } from '../auth/roles';
 import { AuditService } from '../common/audit.service';
 import { optionalQueryString, pageArgs, pageQuery, toPage } from '../common/pagination';
+import { parseBranchCsv } from './branch-import';
 import { parseTerminalCsv, type RowError } from './terminal-import';
 
 const mcc = z.string().regex(/^\d{4}$/, 'must be 4 digits');
@@ -70,6 +71,8 @@ export class NetworkController {
         where,
         include: {
           partner: { select: { id: true, name: true } },
+          // Ids and names only: used for upload templates and pickers.
+          branches: { select: { id: true, name: true }, orderBy: { name: 'asc' } },
           _count: { select: { branches: true, terminals: true } },
         },
         orderBy: { name: 'asc' },
@@ -134,6 +137,38 @@ export class NetworkController {
     const branch = await this.prisma.branch.create({ data: { ...body, merchantId } });
     await this.audit.record(user, 'branch.create', 'Branch', branch.id, undefined, branch);
     return branch;
+  }
+
+  /**
+   * Bulk-adds branches to one merchant from a CSV (`name`, optional `city`). With `dryRun`
+   * (the default) nothing is written; if any row has an error nothing is written either.
+   */
+  @Roles(...EDITORS)
+  @Post('merchants/:id/branches/import')
+  async importBranches(
+    @CurrentUser() user: User,
+    @Param('id') merchantId: string,
+    @Body(new ZodPipe(importInput)) body: z.infer<typeof importInput>,
+  ) {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+      include: { branches: { select: { name: true } } },
+    });
+    if (!merchant) throw notFound('MERCHANT_NOT_FOUND', 'No such merchant');
+    const { rows, errors } = parseBranchCsv(
+      body.csv,
+      merchant.branches.map((b) => b.name),
+    );
+    if (body.dryRun || errors.length > 0) {
+      return { dryRun: true, valid: rows.length, errors, imported: 0 };
+    }
+    await this.prisma.branch.createMany({
+      data: rows.map((r) => ({ merchantId, name: r.name, city: r.city })),
+    });
+    await this.audit.record(user, 'branch.import', 'Merchant', merchantId, undefined, {
+      count: rows.length,
+    });
+    return { dryRun: false, valid: rows.length, errors: [], imported: rows.length };
   }
 
   @Get('terminals')

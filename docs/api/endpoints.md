@@ -2,7 +2,7 @@
 
 # API endpoints
 
-79 endpoints. Full request and response schemas are in the OpenAPI files next to this one.
+80 endpoints. Full request and response schemas are in the OpenAPI files next to this one.
 
 | Spec | Area | Method | Path | What it does | Who can call it |
 | --- | --- | --- | --- | --- | --- |
@@ -42,6 +42,7 @@
 | admin | Network | `GET` | `/admin/v1/merchants/:id` | A merchant with its partner and branches | any staff role |
 | admin | Network | `PATCH` | `/admin/v1/merchants/:id` | Update a merchant | ADMIN, CAMPAIGN_MANAGER |
 | admin | Network | `POST` | `/admin/v1/merchants/:id/branches` | Add a branch | ADMIN, CAMPAIGN_MANAGER |
+| admin | Network | `POST` | `/admin/v1/merchants/:id/branches/import` | Bulk-add branches from CSV | ADMIN, CAMPAIGN_MANAGER |
 | admin | Network | `GET` | `/admin/v1/terminals` | List terminals | any staff role |
 | admin | Network | `POST` | `/admin/v1/terminals` | Register a terminal (TID) | ADMIN, CAMPAIGN_MANAGER |
 | admin | Network | `PATCH` | `/admin/v1/terminals/:id` | Update a terminal | ADMIN, CAMPAIGN_MANAGER |

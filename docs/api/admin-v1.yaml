@@ -750,6 +750,33 @@ components:
       required:
         - error
       description: Every error response has this shape.
+    ImportResult:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+          description: true when nothing was written (dry run, or any row had an error)
+        valid:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              line:
+                type: integer
+              message:
+                type: string
+            required:
+              - line
+              - message
+        imported:
+          type: integer
+      required:
+        - dryRun
+        - valid
+        - errors
+        - imported
     InquirySummary:
       type: object
       properties:
@@ -1756,33 +1783,6 @@ components:
         - mcc
         - active
         - createdAt
-    TerminalImportResult:
-      type: object
-      properties:
-        dryRun:
-          type: boolean
-          description: true when nothing was written (dry run, or any row had an error)
-        valid:
-          type: integer
-        errors:
-          type: array
-          items:
-            type: object
-            properties:
-              line:
-                type: integer
-              message:
-                type: string
-            required:
-              - line
-              - message
-        imported:
-          type: integer
-      required:
-        - dryRun
-        - valid
-        - errors
-        - imported
     User:
       type: object
       properties:
@@ -5088,6 +5088,18 @@ paths:
                               required:
                                 - id
                                 - name
+                            branches:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: string
+                                  name:
+                                    type: string
+                                required:
+                                  - id
+                                  - name
                             _count:
                               type: object
                               properties:
@@ -5100,6 +5112,7 @@ paths:
                                 - terminals
                           required:
                             - partner
+                            - branches
                             - _count
                   total:
                     type: integer
@@ -5384,6 +5397,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Branch"
+        "400":
+          description: "VALIDATION_ERROR: the message lists every invalid field"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "UNAUTHORIZED: not signed in"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "FORBIDDEN: your role does not allow this action"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: MERCHANT_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: "UNSUPPORTED_MEDIA_TYPE: send application/json"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /admin/v1/merchants/{id}/branches/import:
+    post:
+      tags:
+        - Network
+      summary: Bulk-add branches from CSV
+      description: |-
+        CSV columns: `name` (required) and `city` (header row required). Names must be unique in the file and new for this merchant (case-insensitive). `dryRun` defaults to true. Nothing is written if any row has an error. The web app also accepts Excel files and converts them to this CSV.
+
+        **Roles:** ADMIN, CAMPAIGN_MANAGER
+      operationId: network_importBranches
+      security:
+        - SessionCookie: []
+      x-roles:
+        - ADMIN
+        - CAMPAIGN_MANAGER
+      parameters:
+        - schema:
+            type: string
+            description: Resource id (UUID)
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                csv:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000000
+                dryRun:
+                  type: boolean
+                  default: true
+              required:
+                - csv
+            example:
+              csv: |-
+                name,city
+                Maadi,Cairo
+                Olaya,Riyadh
+              dryRun: true
+      responses:
+        "201":
+          description: Bulk-add branches from CSV
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
         "400":
           description: "VALIDATION_ERROR: the message lists every invalid field"
           content:
@@ -7307,7 +7401,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TerminalImportResult"
+                $ref: "#/components/schemas/ImportResult"
         "400":
           description: "VALIDATION_ERROR: the message lists every invalid field"
           content:

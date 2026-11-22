@@ -1,10 +1,20 @@
 'use client';
 
-import { Plus } from 'lucide-react';
-import {} from 'lucide-react';
+import { CreditCard, MapPin, Plus, Store, Upload } from 'lucide-react';
 import { use, useState } from 'react';
+import { BulkUpload } from '@/components/BulkUpload';
 import { FormModal } from '@/components/FormModal';
-import { Badge, Button, Card, ErrorBox, Field, Loading, PageHeader, Table } from '@/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorBox,
+  Field,
+  Loading,
+  PageHeader,
+  Table,
+} from '@/components/ui';
 import { api, useApi, type Page } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { EDITORS, useSession } from '@/lib/session';
@@ -17,6 +27,7 @@ export default function MerchantPage({ params }: { params: Promise<{ id: string 
   const merchant = useApi<Merchant>(`/merchants/${id}`);
   const terminals = useApi<Page<Terminal>>(`/terminals?merchantId=${id}&pageSize=200`);
   const [branch, setBranch] = useState<{ name: string; city: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
   const m = merchant.data;
   if (merchant.error) return <ErrorBox error={merchant.error} />;
   if (!m) return <Loading />;
@@ -29,24 +40,42 @@ export default function MerchantPage({ params }: { params: Promise<{ id: string 
         subtitle={`${m.partner?.name} · ${t(`country.${m.country}`)} · MCC ${m.mcc}`}
         actions={
           can(...EDITORS) && (
-            <Button icon={Plus} onClick={() => setBranch({ name: '', city: '' })}>
-              {t('merchants.newBranch')}
-            </Button>
+            <>
+              <Button icon={Upload} variant="secondary" onClick={() => setUploading(true)}>
+                {t('merchants.uploadBranches')}
+              </Button>
+              <Button icon={Plus} onClick={() => setBranch({ name: '', city: '' })}>
+                {t('merchants.newBranch')}
+              </Button>
+            </>
           )
         }
       />
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card title={t('merchants.branches')}>
-          <ul className="space-y-2 text-sm">
-            {m.branches?.map((b) => (
-              <li key={b.id} className="flex justify-between">
-                <span>{b.name}</span>
-                <span className="text-ink-muted">{b.city}</span>
-              </li>
-            ))}
-          </ul>
+        <Card
+          title={`${t('merchants.branches')} (${m.branches?.length ?? 0})`}
+          icon={Store}
+          tone="sky"
+        >
+          {m.branches?.length ? (
+            <ul className="-my-2 max-h-[28rem] divide-y divide-line overflow-y-auto text-sm">
+              {m.branches.map((b) => (
+                <li key={b.id} className="flex items-center justify-between gap-3 py-2">
+                  <span className="font-medium">{b.name}</span>
+                  {b.city && (
+                    <span className="inline-flex items-center gap-1 text-xs text-ink-muted">
+                      <MapPin className="h-3.5 w-3.5" aria-hidden />
+                      {b.city}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty icon={Store}>{t('merchants.noBranches')}</Empty>
+          )}
         </Card>
-        <Card className="lg:col-span-2" title={t('merchants.terminals')}>
+        <Card className="lg:col-span-2" title={t('merchants.terminals')} icon={CreditCard}>
           <div className="-m-4 sm:-m-5">
             <Table
               rows={terminals.data?.items ?? []}
@@ -104,6 +133,19 @@ export default function MerchantPage({ params }: { params: Promise<{ id: string 
           </>
         )}
       </FormModal>
+      <BulkUpload
+        open={uploading}
+        onClose={() => setUploading(false)}
+        title={t('merchants.uploadBranches')}
+        hint={t('merchants.uploadBranchesHint')}
+        endpoint={`/merchants/${id}/branches/import`}
+        templateName="branches-template"
+        onImported={() => void merchant.reload()}
+        columns={[
+          { name: 'name', required: true, example: t('merchants.exampleBranch') },
+          { name: 'city', example: t('merchants.exampleCity') },
+        ]}
+      />
     </>
   );
 }

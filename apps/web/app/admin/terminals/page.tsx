@@ -1,8 +1,8 @@
 'use client';
 
 import { Plus, Upload } from 'lucide-react';
-import {} from 'lucide-react';
 import { useState } from 'react';
+import { BulkUpload } from '@/components/BulkUpload';
 import { FormModal } from '@/components/FormModal';
 import {
   Badge,
@@ -22,13 +22,6 @@ import { useI18n } from '@/lib/i18n';
 import { EDITORS, useSession } from '@/lib/session';
 import type { Acquirer, Merchant, Terminal } from '@/lib/types';
 
-interface ImportResult {
-  dryRun: boolean;
-  valid: number;
-  imported: number;
-  errors: Array<{ line: number; message: string }>;
-}
-
 export default function TerminalsPage() {
   const { t } = useI18n();
   const { can } = useSession();
@@ -42,28 +35,10 @@ export default function TerminalsPage() {
     branchId: string;
     mcc: string;
   } | null>(null);
-  const acquirers = useApi<Acquirer[]>(form ? '/acquirers' : null);
-  const merchants = useApi<Page<Merchant>>(form ? '/merchants?pageSize=200' : null);
-  const merchant = useApi<Merchant>(form?.merchantId ? `/merchants/${form.merchantId}` : null);
   const [importing, setImporting] = useState(false);
-  const [csv, setCsv] = useState('');
-  const [result, setResult] = useState<ImportResult>();
-  const [importError, setImportError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-
-  const runImport = async (dryRun: boolean) => {
-    setBusy(true);
-    setImportError(undefined);
-    try {
-      const r = await api<ImportResult>('/terminals/import', { body: { csv, dryRun } });
-      setResult(r);
-      if (!r.dryRun) await list.reload();
-    } catch (e) {
-      setImportError((e as ApiError).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const acquirers = useApi<Acquirer[]>(form || importing ? '/acquirers' : null);
+  const merchants = useApi<Page<Merchant>>(form || importing ? '/merchants?pageSize=200' : null);
+  const merchant = useApi<Merchant>(form?.merchantId ? `/merchants/${form.merchantId}` : null);
 
   const toggle = async (term: Terminal) => {
     await api(`/terminals/${term.id}`, { method: 'PATCH', body: { active: !term.active } });
@@ -77,15 +52,7 @@ export default function TerminalsPage() {
         actions={
           can(...EDITORS) && (
             <>
-              <Button
-                icon={Upload}
-                variant="secondary"
-                onClick={() => {
-                  setImporting(true);
-                  setResult(undefined);
-                  setCsv('');
-                }}
-              >
+              <Button icon={Upload} variant="secondary" onClick={() => setImporting(true)}>
                 {t('terminals.import')}
               </Button>
               <Button
@@ -234,73 +201,41 @@ export default function TerminalsPage() {
         )}
       </FormModal>
 
-      <Modal
+      <BulkUpload
         open={importing}
-        title={t('terminals.import')}
         onClose={() => setImporting(false)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setImporting(false)}>
-              {t('common.close')}
-            </Button>
-            <Button
-              variant="secondary"
-              loading={busy}
-              disabled={!csv.trim()}
-              onClick={() => void runImport(true)}
-            >
-              {t('terminals.validate')}
-            </Button>
-            {result?.dryRun && result.errors.length === 0 && result.valid > 0 && (
-              <Button loading={busy} onClick={() => void runImport(false)}>
-                {t('terminals.importNow', { count: result.valid })}
-              </Button>
-            )}
-          </>
-        }
-      >
-        <p className="mb-3 text-xs text-ink-muted">{t('terminals.importHint')}</p>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          className="mb-3 block text-sm"
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (file) {
-              setCsv(await file.text());
-              setResult(undefined);
-            }
-          }}
-        />
-        <textarea
-          className="input h-40 py-2 font-mono text-xs ltr"
-          value={csv}
-          onChange={(e) => {
-            setCsv(e.target.value);
-            setResult(undefined);
-          }}
-          placeholder="acquirer_api_key,tid,merchant_id,branch_id,mcc"
-        />
-        <div className="mt-3 space-y-2 text-sm">
-          <ErrorBox error={importError} />
-          {result && !result.dryRun && (
-            <p className="text-ok">{t('terminals.imported', { count: result.imported })}</p>
-          )}
-          {result?.dryRun && <p>{t('terminals.importValid', { count: result.valid })}</p>}
-          {result && result.errors.length > 0 && (
-            <div className="rounded-lg bg-bad-bg p-3 text-bad">
-              <div className="mb-1 font-medium">{t('terminals.importErrors')}</div>
-              <ul className="space-y-1 text-xs">
-                {result.errors.map((e) => (
-                  <li key={`${e.line}-${e.message}`}>
-                    {t('terminals.line', { line: e.line })}: {e.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </Modal>
+        title={t('terminals.import')}
+        hint={t('terminals.importHint')}
+        endpoint="/terminals/import"
+        templateName="terminals-template"
+        onImported={() => void list.reload()}
+        reference={{
+          sheet: 'Reference',
+          rows: [
+            ['type', 'name', 'id_to_copy', 'belongs_to'],
+            ...(acquirers.data ?? []).map((a) => ['acquirer', a.name, a.apiKeyId, '']),
+            ...(merchants.data?.items ?? []).flatMap((m) => [
+              ['merchant', m.name, m.id, m.partner?.name ?? ''],
+              ...(m.branches ?? []).map((b) => ['branch', b.name, b.id, m.name]),
+            ]),
+          ],
+        }}
+        columns={[
+          {
+            name: 'acquirer_api_key',
+            required: true,
+            example: acquirers.data?.[0]?.apiKeyId ?? 'acq_demo',
+          },
+          { name: 'tid', required: true, example: 'TID0002' },
+          {
+            name: 'merchant_id',
+            required: true,
+            example: merchants.data?.items[0]?.id ?? '00000000-0000-0000-0000-000000000000',
+          },
+          { name: 'branch_id', example: merchants.data?.items[0]?.branches?.[0]?.id ?? '' },
+          { name: 'mcc', example: '5812' },
+        ]}
+      />
     </>
   );
 }
